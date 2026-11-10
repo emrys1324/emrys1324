@@ -356,7 +356,7 @@ function BrandingSection({
             </div>
             <span className="font-bold">₱150</span>
           </div>
-          <p className="absolute left-3 top-3 font-display text-2xl font-bold text-coffee-900">Slow down. Sip.</p>
+          <p className="absolute left-3 right-3 top-3 font-display text-lg font-bold leading-tight text-coffee-900">First ever neighborhood cafe in San Agustin, Romblon</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <label className="btn-secondary btn-sm cursor-pointer">
