@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Isla</string>
+    <string name="title_activity_main">Isla</string>
+    <string name="package_name">cafe.pahuway.isla</string>
+    <string name="custom_url_scheme">cafe.pahuway.isla</string>
+</resources>

@@ -8,6 +8,8 @@ A lean, mobile-first ordering app for **Pahuway Cafe** (San Agustin, Romblon). C
 
 More screenshots are in [`docs/screenshots/`](docs/screenshots).
 
+**Mobile app:** the same app ships as **Isla** for Android and iPhone (Capacitor), with push notifications. See [docs/MOBILE.md](docs/MOBILE.md) for the store release steps.
+
 ---
 
 ## What's inside
@@ -60,6 +62,7 @@ npm run db:start
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `ANON_KEY`, or Settings → API → anon public | browser + server |
 | `SUPABASE_SERVICE_ROLE_KEY` | `SERVICE_ROLE_KEY`, or Settings → API → service_role | **server only**: "Add rider" button + seed script. Never expose it. |
 | `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` / `SEED_RIDER_EMAIL` / `SEED_RIDER_PASSWORD` | your choice (optional) | `npm run seed:users` |
+| `PUSH_WEBHOOK_SECRET`, `FIREBASE_SERVICE_ACCOUNT`, `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_PRIVATE_KEY`, `APNS_BUNDLE_ID` | see [docs/MOBILE.md](docs/MOBILE.md) | **server only**: push notifications for the Isla app (optional) |
 
 Then create the starter logins and run the app:
 
@@ -104,8 +107,10 @@ Open http://localhost:3000. Staff and riders sign in at http://localhost:3000/lo
 |---|---|---|
 | Type check | `npm run typecheck` | |
 | Production build | `npm run build` | |
-| Database rules (28 checks) | `npm run test:db` | Needs `npm run db:start`. Checks prices, validation, sold-out, closed store, minimum order, RLS (guest / customer / rider / admin), role escalation, rider actions, realtime broadcasts and the summary. Resets the local DB afterwards. |
+| Database rules (46 checks) | `npm run test:db` | Needs `npm run db:start`. Checks prices, validation, sold-out, closed store, minimum order, RLS (guest / customer / rider / admin), role escalation, rider actions, realtime broadcasts and the summary. Resets the local DB afterwards. |
 | Database rules without Docker | see `supabase/tests/supabase_stubs.sql` | Runs the same scenarios on plain Postgres with stand-ins for Supabase's schemas. |
+| Push sender (Firebase + APNs mocked, 12 checks) | `npm run test:push` | Needs local Supabase + `seed:users`. |
+| App-mode behaviour (13 checks) | `npm run test:native` | Runs the site with Capacitor's real Android bridge and a fake native side: push registration, Notify me, no-Firebase safety. Needs the app on :3000. |
 | End-to-end acceptance test | `npm run test:e2e` | Needs local Supabase + `seed:users` + the app on :3000, plus Playwright (`npm i -D playwright && npx playwright install chromium`). Drives a customer phone, staff tablet and rider phone at once and re-creates the screenshots. |
 
 The end-to-end test covers every acceptance criterion: a guest orders a customised iced latte for delivery and pays by GCash screenshot. Staff see it instantly with a chime, verify payment, accept, assign the rider and mark it ready, and the customer's page updates live at each step. The rider sees only their order and marks it picked up, then delivered. Marking Americano sold out removes its Add button on the customer's phone at once. Closing the store blocks ordering with a friendly message.

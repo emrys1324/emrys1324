@@ -5,6 +5,7 @@ import { Suspense, useCallback, useEffect, useState } from "react";
 import { Logo } from "./Header";
 import { Alert, Badge, PageLoader } from "@/components/ui";
 import { getSupabase } from "@/lib/supabase/client";
+import { enableOrderPush, isNativeApp, pushAvailable, type PushResult } from "@/lib/native";
 import { formatPeso, ORDER_TYPE_LABEL } from "@/lib/format";
 import { formatDateTime, formatTime } from "@/lib/hours";
 import type { OrderStatus, OrderType, PaymentMethod, PaymentStatus } from "@/lib/types";
@@ -66,6 +67,28 @@ function Inner({ token }: { token: string }) {
   const [notFound, setNotFound] = useState(false);
   const [live, setLive] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [native, setNative] = useState(false);
+  const [push, setPush] = useState<PushResult | "asking" | null>(null);
+  useEffect(() => {
+    if (!isNativeApp()) return;
+    pushAvailable().then((ok) => {
+      if (!ok) return setPush("unavailable");
+      setNative(true);
+      try {
+        if (localStorage.getItem(`isla-push-order-${token}`)) setPush("enabled");
+      } catch {}
+    });
+  }, [token]);
+  const askPush = async () => {
+    setPush("asking");
+    const r = await enableOrderPush(token);
+    setPush(r);
+    if (r === "enabled") {
+      try {
+        localStorage.setItem(`isla-push-order-${token}`, "1");
+      } catch {}
+    }
+  };
 
   const load = useCallback(async () => {
     if (!/^[0-9a-f-]{36}$/i.test(token)) return setNotFound(true);
@@ -124,7 +147,7 @@ function Inner({ token }: { token: string }) {
 
   return (
     <div className="min-h-screen pb-10">
-      <header className="border-b border-coffee-100 bg-cream">
+      <header className="border-b border-coffee-100 bg-cream pt-[env(safe-area-inset-top)]">
         <div className="mx-auto flex max-w-lg items-center justify-between px-4 py-3">
           <Logo small />
           <span className={`flex items-center gap-1.5 text-xs font-semibold ${live ? "text-sage-700" : "text-coffee-600"}`}>
@@ -141,6 +164,28 @@ function Inner({ token }: { token: string }) {
             <p className="font-display text-2xl font-bold">Your order is in.</p>
             <p className="mt-1 text-sage-100">Keep this page open, or save the link, to follow your order.</p>
           </div>
+        )}
+
+        {native && !cancelled && order.status !== "completed" && push !== "enabled" && push !== "unavailable" && (
+          <section className="card flex items-center gap-4 p-4">
+            <span className="text-3xl" aria-hidden>
+              🔔
+            </span>
+            <div className="flex-1">
+              <p className="font-bold">Get notified when it&apos;s ready</p>
+              <p className="text-sm text-coffee-700">
+                {push === "denied" ? "Notifications are off for Isla. Turn them on in your phone's Settings." : "We'll send one alert per update. No ads, ever."}
+              </p>
+            </div>
+            {push !== "denied" && (
+              <button className="btn-sage btn-sm shrink-0" onClick={askPush} disabled={push === "asking"}>
+                {push === "asking" ? "…" : "Notify me"}
+              </button>
+            )}
+          </section>
+        )}
+        {native && push === "enabled" && !cancelled && order.status !== "completed" && (
+          <p className="text-center text-sm font-medium text-sage-700">🔔 We&apos;ll notify you when your order status changes.</p>
         )}
 
         <section className="card p-5">

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { StoreHeader } from "@/components/customer/Header";
 import { Alert, Badge, PageLoader, Spinner } from "@/components/ui";
 import { getSupabase } from "@/lib/supabase/client";
+import { signOutAndGo } from "@/lib/native";
 import { formatPeso, normalizePhone, ORDER_TYPE_LABEL, STATUS_LABEL } from "@/lib/format";
 import { formatDateTime } from "@/lib/hours";
 import { useStoreSettings } from "@/lib/store-settings";
@@ -182,10 +183,7 @@ function Profile({ user }: { user: User }) {
         </div>
         <button
           className="btn-secondary btn-sm"
-          onClick={async () => {
-            await getSupabase().auth.signOut();
-            window.location.href = "/";
-          }}
+          onClick={() => signOutAndGo("/")}
         >
           Sign out
         </button>
@@ -272,6 +270,64 @@ function Profile({ user }: { user: User }) {
           </ul>
         )}
       </section>
+
+      <DeleteAccount />
+      <p className="text-center text-sm">
+        <Link href="/privacy" className="text-coffee-700 underline">
+          Privacy policy
+        </Link>
+      </p>
     </div>
+  );
+}
+
+function DeleteAccount() {
+  const [open, setOpen] = useState(false);
+  const [confirmText, setConfirmText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const remove = async () => {
+    setBusy(true);
+    setError(null);
+    const supabase = getSupabase();
+    const { error } = await supabase.rpc("delete_my_account");
+    if (error) {
+      setBusy(false);
+      return setError(error.message);
+    }
+    await supabase.auth.signOut();
+    window.location.href = "/?account_deleted=1";
+  };
+
+  return (
+    <section className="card p-5">
+      {!open ? (
+        <button className="btn-ghost btn-sm w-full text-red-700" onClick={() => setOpen(true)}>
+          Delete my account
+        </button>
+      ) : (
+        <div className="space-y-3">
+          <h2 className="section-title text-red-800">Delete account</h2>
+          <p className="text-sm text-coffee-700">
+            This permanently deletes your login and saved details. Your past orders stay in the café&apos;s records but are no longer linked to you. This can&apos;t be
+            undone.
+          </p>
+          {error && <Alert>{error}</Alert>}
+          <label className="label" htmlFor="del-confirm">
+            Type DELETE to confirm
+          </label>
+          <input id="del-confirm" className="input" value={confirmText} onChange={(e) => setConfirmText(e.target.value)} autoCapitalize="characters" />
+          <div className="grid grid-cols-2 gap-2">
+            <button className="btn-secondary" onClick={() => setOpen(false)} disabled={busy}>
+              Cancel
+            </button>
+            <button className="btn-danger" onClick={remove} disabled={busy || confirmText.trim().toUpperCase() !== "DELETE"}>
+              {busy ? <Spinner /> : "Delete forever"}
+            </button>
+          </div>
+        </div>
+      )}
+    </section>
   );
 }

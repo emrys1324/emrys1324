@@ -40,6 +40,8 @@ export function SettingsAdmin() {
         gcash_name: s.gcash_name,
         gcash_number: s.gcash_number,
         gcash_qr_url: s.gcash_qr_url,
+        contact_phone: s.contact_phone || null,
+        contact_email: s.contact_email || null,
       })
       .eq("id", 1);
     setBusy(false);
@@ -74,6 +76,21 @@ export function SettingsAdmin() {
               <input id="close" type="time" className="input" value={s.close_time.slice(0, 5)} onChange={(e) => set("close_time", e.target.value)} />
             </div>
           </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label" htmlFor="c-phone">
+                Café mobile (public)
+              </label>
+              <input id="c-phone" className="input" inputMode="numeric" value={s.contact_phone ?? ""} onChange={(e) => set("contact_phone", e.target.value)} />
+            </div>
+            <div>
+              <label className="label" htmlFor="c-email">
+                Café email (public)
+              </label>
+              <input id="c-email" type="email" className="input" value={s.contact_email ?? ""} onChange={(e) => set("contact_email", e.target.value)} />
+            </div>
+          </div>
+          <p className="hint -mt-2">Shown on the privacy policy page, which the app stores require.</p>
           <div>
             <label className="label" htmlFor="closed-msg">
               Message when closed

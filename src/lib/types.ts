@@ -16,6 +16,8 @@ export interface StoreSettings {
   gcash_name: string | null;
   gcash_number: string | null;
   gcash_qr_url: string | null;
+  contact_phone: string | null;
+  contact_email: string | null;
 }
 
 export interface Category {

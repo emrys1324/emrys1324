@@ -1,9 +1,10 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Toggle } from "@/components/ui";
 import { getSupabase } from "@/lib/supabase/client";
+import { enableAccountPush, isNativeApp, signOutAndGo } from "@/lib/native";
 import { useStoreSettings } from "@/lib/store-settings";
 import { formatHours } from "@/lib/hours";
 
@@ -20,6 +21,13 @@ export function AdminShell({ email, children }: { email: string; children: React
   const path = usePathname();
   const { settings, open } = useStoreSettings();
   const [busy, setBusy] = useState(false);
+  const [pushState, setPushState] = useState<string | null>(null);
+
+  // In the Isla app: alert this device about new orders, even when the app is closed
+  useEffect(() => {
+    if (!isNativeApp()) return;
+    enableAccountPush().then(setPushState);
+  }, []);
 
   const toggleOpen = async (v: boolean) => {
     setBusy(true);
@@ -29,7 +37,7 @@ export function AdminShell({ email, children }: { email: string; children: React
 
   return (
     <div className="min-h-screen bg-cream-100">
-      <header className="sticky top-0 z-30 border-b border-coffee-200 bg-coffee-800 text-cream">
+      <header className="sticky top-0 z-30 border-b border-coffee-200 bg-coffee-800 pt-[env(safe-area-inset-top)] text-cream">
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-2.5">
           <Link href="/admin" className="flex items-center gap-2">
             {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -49,10 +57,7 @@ export function AdminShell({ email, children }: { email: string; children: React
           )}
           <button
             className="hidden rounded-xl px-3 py-2 text-sm font-semibold text-coffee-100 hover:bg-coffee-700 md:block"
-            onClick={async () => {
-              await getSupabase().auth.signOut();
-              window.location.href = "/login";
-            }}
+            onClick={() => signOutAndGo("/login")}
             title={email}
           >
             Sign out
@@ -74,16 +79,20 @@ export function AdminShell({ email, children }: { email: string; children: React
           })}
           <button
             className="shrink-0 rounded-xl px-4 py-2.5 text-sm font-semibold text-coffee-100 hover:bg-coffee-700 md:hidden"
-            onClick={async () => {
-              await getSupabase().auth.signOut();
-              window.location.href = "/login";
-            }}
+            onClick={() => signOutAndGo("/login")}
           >
             Sign out
           </button>
         </nav>
       </header>
-      <main className="mx-auto max-w-7xl px-3 py-4 sm:px-4">{children}</main>
+      <main className="mx-auto max-w-7xl px-3 py-4 sm:px-4">
+        {pushState === "denied" && (
+          <p className="mb-3 rounded-2xl bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">
+            Notifications are off for Isla, so you won&apos;t be alerted to new orders while the app is closed. Turn them on in your phone&apos;s Settings → Apps → Isla → Notifications.
+          </p>
+        )}
+        {children}
+      </main>
     </div>
   );
 }

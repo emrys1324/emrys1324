@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Logo } from "@/components/customer/Header";
 import { Alert, Badge, PageLoader, Spinner } from "@/components/ui";
 import { getSupabase } from "@/lib/supabase/client";
+import { enableAccountPush, isNativeApp, signOutAndGo } from "@/lib/native";
 import { formatPeso, friendlyError, STATUS_LABEL } from "@/lib/format";
 import { formatTime, storeNow } from "@/lib/hours";
 import { playChime, unlockAudio } from "@/lib/sound";
@@ -15,6 +16,13 @@ export function RiderScreen() {
   const [showDone, setShowDone] = useState(false);
   const [soundOn, setSoundOn] = useState(false);
   const known = useRef<Set<string> | null>(null);
+  const [pushState, setPushState] = useState<string | null>(null);
+
+  // In the Isla app: alert this rider about new assignments, even when the app is closed
+  useEffect(() => {
+    if (!isNativeApp()) return;
+    enableAccountPush().then(setPushState);
+  }, []);
 
   // RLS returns only orders assigned to this rider.
   const load = useCallback(async () => {
@@ -67,15 +75,12 @@ export function RiderScreen() {
 
   return (
     <div className="min-h-screen pb-10">
-      <header className="sticky top-0 z-20 border-b border-coffee-100 bg-cream/95 backdrop-blur">
+      <header className="sticky top-0 z-20 border-b border-coffee-100 bg-cream/95 pt-[env(safe-area-inset-top)] backdrop-blur">
         <div className="mx-auto flex max-w-lg items-center justify-between px-4 py-3">
           <Logo small />
           <button
             className="btn-ghost btn-sm"
-            onClick={async () => {
-              await getSupabase().auth.signOut();
-              window.location.href = "/login";
-            }}
+            onClick={() => signOutAndGo("/login")}
           >
             Sign out
           </button>
@@ -91,6 +96,9 @@ export function RiderScreen() {
           )}
         </div>
         {error && <Alert>{error}</Alert>}
+        {pushState === "denied" && (
+          <Alert tone="amber">Notifications are off, so you won&apos;t hear about new deliveries while Isla is closed. Turn them on in Settings → Apps → Isla.</Alert>
+        )}
         {!orders && <PageLoader />}
         {orders && active.length === 0 && (
           <div className="card p-8 text-center">
