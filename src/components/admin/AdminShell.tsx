@@ -7,6 +7,7 @@ import { getSupabase } from "@/lib/supabase/client";
 import { enableAccountPush, isNativeApp, signOutAndGo } from "@/lib/native";
 import { useLogo, useStoreSettings } from "@/lib/store-settings";
 import { formatHours } from "@/lib/hours";
+import { DEFAULT_STAFF_HEADER, headerTheme, headerVars, isHex } from "@/lib/color";
 
 const NAV = [
   { href: "/admin", label: "Orders" },
@@ -21,6 +22,8 @@ export function AdminShell({ email, children }: { email: string; children: React
   const path = usePathname();
   const { settings, open } = useStoreSettings();
   const logo = useLogo();
+  const staffTheme = headerTheme(isHex(settings?.staff_header_color) ? settings.staff_header_color : DEFAULT_STAFF_HEADER);
+  const staffTitle = settings?.staff_title?.trim() || "Pahuway Staff";
   const [busy, setBusy] = useState(false);
   const [pushState, setPushState] = useState<string | null>(null);
 
@@ -38,15 +41,21 @@ export function AdminShell({ email, children }: { email: string; children: React
 
   return (
     <div className="min-h-screen bg-cream-100">
-      <header className="sticky top-0 z-30 border-b border-coffee-200 bg-coffee-800 pt-[env(safe-area-inset-top)] text-cream">
+      <header
+        data-testid="staff-header"
+        className="sticky top-0 z-30 border-b border-black/10 bg-[color:var(--sbg)] pt-[env(safe-area-inset-top)] text-[color:var(--sfg)]"
+        style={headerVars(staffTheme, "s")}
+      >
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-2.5">
           <Link href="/admin" className="flex items-center gap-2">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={logo} alt="" className="h-9 w-9 rounded-full bg-cream object-cover" />
-            <span className="hidden font-display text-lg font-bold sm:inline">Pahuway Staff</span>
+            <span data-testid="staff-title" className="hidden font-display text-lg font-bold sm:inline">
+              {staffTitle}
+            </span>
           </Link>
           {settings && (
-            <label className="flex items-center gap-3 rounded-2xl bg-coffee-900/60 px-3 py-1.5">
+            <label className="flex items-center gap-3 rounded-2xl bg-coffee-900 px-3 py-1.5 text-cream">
               <span className="text-right leading-tight">
                 <span className={`block text-sm font-bold ${open ? "text-sage-200" : "text-amber-200"}`}>
                   {settings.is_open ? (open ? "OPEN for orders" : "Outside hours") : "CLOSED"}
@@ -57,7 +66,7 @@ export function AdminShell({ email, children }: { email: string; children: React
             </label>
           )}
           <button
-            className="hidden rounded-xl px-3 py-2 text-sm font-semibold text-coffee-100 hover:bg-coffee-700 md:block"
+            className="hidden rounded-xl px-3 py-2 text-sm font-semibold text-[color:var(--smuted)] hover:bg-[color:var(--shover)] md:block"
             onClick={() => signOutAndGo("/login")}
             title={email}
           >
@@ -72,14 +81,14 @@ export function AdminShell({ email, children }: { email: string; children: React
                 key={n.href}
                 href={n.href}
                 aria-current={active ? "page" : undefined}
-                className={`shrink-0 rounded-xl px-4 py-2.5 text-sm font-semibold ${active ? "bg-cream text-coffee-900" : "text-coffee-100 hover:bg-coffee-700"}`}
+                className={`shrink-0 rounded-xl px-4 py-2.5 text-sm font-semibold ${active ? "bg-[color:var(--sactive-bg)] text-[color:var(--sactive-fg)]" : "text-[color:var(--smuted)] hover:bg-[color:var(--shover)]"}`}
               >
                 {n.label}
               </Link>
             );
           })}
           <button
-            className="shrink-0 rounded-xl px-4 py-2.5 text-sm font-semibold text-coffee-100 hover:bg-coffee-700 md:hidden"
+            className="shrink-0 rounded-xl px-4 py-2.5 text-sm font-semibold text-[color:var(--smuted)] hover:bg-[color:var(--shover)] md:hidden"
             onClick={() => signOutAndGo("/login")}
           >
             Sign out

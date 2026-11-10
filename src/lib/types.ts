@@ -21,6 +21,9 @@ export interface StoreSettings {
   logo_url: string | null;
   background_url: string | null;
   background_fade: number;
+  header_color: string | null;
+  staff_header_color: string | null;
+  staff_title: string;
 }
 
 export interface Category {

@@ -5,6 +5,7 @@ import { getSupabase } from "@/lib/supabase/client";
 import { uploadPublicImage } from "@/lib/upload";
 import { DEFAULT_LOGO, useStoreSettings } from "@/lib/store-settings";
 import { BackgroundLayer } from "@/components/BrandBackground";
+import { DEFAULT_STAFF_HEADER, headerTheme, isHex } from "@/lib/color";
 import type { Rider, StoreSettings } from "@/lib/types";
 
 export function SettingsAdmin() {
@@ -33,7 +34,10 @@ export function SettingsAdmin() {
     const { error } = await getSupabase()
       .from("store_settings")
       .update({
-        store_name: s.store_name,
+        store_name: s.store_name.trim() || "Pahuway Cafe",
+        staff_title: (s.staff_title ?? "").trim() || "Pahuway Staff",
+        header_color: isHex(s.header_color) ? s.header_color : null,
+        staff_header_color: isHex(s.staff_header_color) ? s.staff_header_color : null,
         is_open: s.is_open,
         open_time: s.open_time,
         close_time: s.close_time,
@@ -385,9 +389,137 @@ function BrandingSection({
         <p className="hint">Landscape photo, at least 1600 px wide (e.g. your café interior or a coffee close-up). Shown behind customer pages only, not the staff screens. Max 5 MB.</p>
       </div>
 
+      <HeaderSettings s={s} set={set} logo={logo} />
+
       <p className="rounded-2xl bg-cream-100 px-4 py-3 text-sm text-coffee-700">
         The icon on phones&apos; home screens (the Isla app icon) is set when the app is published to the stores and only changes with an app update.
       </p>
     </section>
+  );
+}
+
+const SWATCHES = ["#fbf7f0", "#ffffff", "#efe4d8", "#432c1d", "#2e1e14", "#556c4d", "#435639", "#1e3a5f", "#7a2e2e", "#c2410c"];
+
+function ColorField({ id, label, value, fallback, onChange }: { id: string; label: string; value: string | null; fallback: string; onChange: (v: string | null) => void }) {
+  const current = isHex(value) ? value : fallback;
+  const [text, setText] = useState(current);
+  useEffect(() => setText(current), [current]);
+  const theme = headerTheme(current);
+  return (
+    <div className="space-y-2">
+      <span className="label" id={`${id}-label`}>
+        {label}
+      </span>
+      <div className="flex flex-wrap items-center gap-2" role="group" aria-labelledby={`${id}-label`}>
+        {SWATCHES.map((c) => (
+          <button
+            key={c}
+            type="button"
+            title={c}
+            aria-label={`Use colour ${c}`}
+            aria-pressed={current.toLowerCase() === c}
+            onClick={() => onChange(c)}
+            className={`h-9 w-9 rounded-full border-2 ${current.toLowerCase() === c ? "border-coffee-900 ring-2 ring-coffee-300" : "border-coffee-200"}`}
+            style={{ background: c }}
+          />
+        ))}
+        <label className="relative flex h-9 cursor-pointer items-center gap-2 rounded-full border border-coffee-200 bg-white pl-1 pr-3 text-sm font-semibold">
+          <input type="color" value={current} onChange={(e) => onChange(e.target.value)} className="h-7 w-7 cursor-pointer rounded-full border-0 bg-transparent p-0" aria-label={`${label}: custom colour`} />
+          Custom
+        </label>
+        <input
+          id={id}
+          className="input h-9 min-h-0 w-28 rounded-full px-3 font-mono text-sm"
+          value={text}
+          maxLength={7}
+          aria-label={`${label}: hex code`}
+          onChange={(e) => {
+            const v = e.target.value.startsWith("#") ? e.target.value : "#" + e.target.value;
+            setText(v);
+            if (isHex(v)) onChange(v.toLowerCase());
+          }}
+        />
+        {isHex(value) && (
+          <button type="button" className="btn-ghost btn-sm" onClick={() => onChange(null)}>
+            Default
+          </button>
+        )}
+      </div>
+      {theme.ratio < 4.5 && (
+        <p className="error-text" role="alert">
+          This colour makes header text hard to read (contrast {theme.ratio.toFixed(1)}:1, minimum 4.5:1). Try a darker or lighter shade.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function HeaderSettings({ s, set, logo }: { s: StoreSettings; set: SetFn; logo: string }) {
+  const cust = isHex(s.header_color) ? headerTheme(s.header_color) : null;
+  const staff = headerTheme(isHex(s.staff_header_color) ? s.staff_header_color : DEFAULT_STAFF_HEADER);
+  const storeName = s.store_name?.trim() || "Pahuway Cafe";
+  const staffTitle = s.staff_title?.trim() || "Pahuway Staff";
+  return (
+    <div className="space-y-6 border-t border-coffee-100 pt-5">
+      {/* Customer header */}
+      <div className="space-y-3">
+        <p className="font-bold">Customer header</p>
+        <div
+          data-testid="customer-header-preview"
+          className="flex items-center justify-between gap-3 rounded-2xl border border-coffee-200 px-4 py-3"
+          style={{ background: cust?.bg ?? "#fbf7f0", color: cust?.fg ?? "#2e1e14" }}
+        >
+          <span className="flex min-w-0 items-center gap-2.5">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={logo} alt="" className="h-10 w-10 shrink-0 rounded-full object-cover" />
+            <span className="min-w-0 leading-tight">
+              <span className="block truncate font-display text-lg font-bold">{storeName}</span>
+              <span className="block text-xs" style={{ color: cust?.muted ?? "#714a2f" }}>
+                San Agustin, Romblon
+              </span>
+            </span>
+          </span>
+          <span className="rounded-full bg-sage-100 px-3 py-1 text-xs font-bold text-sage-700">Open</span>
+        </div>
+        <div>
+          <label className="label" htmlFor="store-name">
+            Store name (header title)
+          </label>
+          <input id="store-name" className="input" value={s.store_name ?? ""} maxLength={40} onChange={(e) => set("store_name", e.target.value)} placeholder="Pahuway Cafe" />
+        </div>
+        <ColorField id="header-color" label="Header colour" value={s.header_color} fallback="#fbf7f0" onChange={(v) => set("header_color", v)} />
+      </div>
+
+      {/* Staff header */}
+      <div className="space-y-3">
+        <p className="font-bold">Staff header</p>
+        <div
+          data-testid="staff-header-preview"
+          className="flex items-center justify-between gap-3 rounded-2xl px-4 py-3"
+          style={{ background: staff.bg, color: staff.fg }}
+        >
+          <span className="flex min-w-0 items-center gap-2.5">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={logo} alt="" className="h-9 w-9 shrink-0 rounded-full bg-cream object-cover" />
+            <span className="truncate font-display text-lg font-bold">{staffTitle}</span>
+          </span>
+          <span className="flex gap-1 text-sm font-semibold">
+            <span className="rounded-lg px-2.5 py-1" style={{ background: staff.activeBg, color: staff.activeFg }}>
+              Orders
+            </span>
+            <span className="rounded-lg px-2.5 py-1" style={{ color: staff.muted }}>
+              Menu
+            </span>
+          </span>
+        </div>
+        <div>
+          <label className="label" htmlFor="staff-title">
+            Staff header title
+          </label>
+          <input id="staff-title" className="input" value={s.staff_title ?? ""} maxLength={40} onChange={(e) => set("staff_title", e.target.value)} placeholder="Pahuway Staff" />
+        </div>
+        <ColorField id="staff-color" label="Staff header colour" value={s.staff_header_color} fallback={DEFAULT_STAFF_HEADER} onChange={(v) => set("staff_header_color", v)} />
+      </div>
+    </div>
   );
 }
