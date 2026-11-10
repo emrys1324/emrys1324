@@ -48,8 +48,8 @@ export function MenuScreen() {
 
       <main className="mx-auto max-w-5xl px-4">
         <section className="py-5">
-          <h1 className="font-display text-3xl font-bold leading-tight sm:text-4xl">
-            Slow down. <span className="text-sage-600">Sip.</span>
+          <h1 className="font-display text-2xl font-bold leading-tight sm:text-4xl">
+            First ever neighborhood cafe in <span className="text-sage-600">San Agustin, Romblon</span>
           </h1>
           <p className="mt-1 text-coffee-700">Specialty coffee &amp; island comfort food. Pickup, dine-in pre-order or delivery.</p>
           {settings && <p className="mt-1 text-sm font-medium text-coffee-600">Open daily · {formatHours(settings)}</p>}

@@ -16,7 +16,7 @@ interface Summary {
   average: number;
   top_items: { name: string; qty: number; sales: number }[];
   by_type: { order_type: OrderType; orders: number; sales: number }[];
-  by_payment: { payment_method: "cash" | "gcash"; orders: number; sales: number }[];
+  by_payment: { payment_method: "cash" | "gcash" | "online"; orders: number; sales: number }[];
 }
 
 function todayInManila() {
@@ -72,7 +72,7 @@ export function SummaryAdmin() {
                 <div className="mt-4 border-t border-coffee-100 pt-3 text-sm">
                   {data.by_payment.map((p) => (
                     <p key={p.payment_method} className="flex justify-between">
-                      <span>{p.payment_method === "gcash" ? "GCash" : "Cash"} ({p.orders})</span>
+                      <span>{p.payment_method === "gcash" ? "GCash (manual)" : p.payment_method === "online" ? "Online (HitPay)" : "Cash"} ({p.orders})</span>
                       <span className="font-semibold tabular-nums">{formatPeso(p.sales)}</span>
                     </p>
                   ))}

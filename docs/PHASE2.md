@@ -7,7 +7,7 @@ Ranked by **value for money**: impact on sales or staff time, divided by build e
 | 1 | **SMS / Messenger order updates** ("Your order is ready", "Rider on the way") | High | Low | 2–3 days | Customers often close the browser tab. Use a database webhook → Supabase Edge Function → Semaphore (PH SMS gateway, ~₱0.50/SMS) or Messenger. Also helps staff with no-show pickups. |
 | 2 | **Filipino / English language toggle** | Medium | Low | 2–3 days | Move UI text into a translation file and add a toggle in the header. Good for locals; tourists keep English. |
 | 3 | **Promo codes** (fixed/percent, min spend, expiry, use limit) | High | Low–Med | 3–4 days | Cheap marketing for slow hours ("MERIENDA20" from 2–5 PM). Enforced inside `place_order`. |
-| 4 | **Integrated GCash/card payments via PayMongo** | High | Medium | 5–7 days | Removes manual screenshot checks and fake receipts. Webhook marks orders paid automatically. Fees are ~2.5% for GCash. Keep the manual flow as a fallback. |
+| 4 | ✅ **Done — online GCash/QR Ph payments via HitPay** (see [PAYMENTS.md](PAYMENTS.md)) | High | Medium | — | Removes manual screenshot checks and fake receipts; orders are confirmed automatically. Manual GCash kept as a fallback. Cards can be added later via `HITPAY_METHODS`. |
 | 5 | **Installable app (PWA) + push notifications for staff and riders** | Medium | Low–Med | 3–4 days | A home-screen icon, and new-order alerts even when the tablet browser is in the background. |
 | 6 | **Sales reports & CSV export** (week/month, by item, by hour) | Medium | Low–Med | 3 days | Helps with staffing and bookkeeping; builds on `daily_summary`. |
 | 7 | **Loyalty stamps** (e.g. 10th drink free) | Medium | Medium | 5–7 days | Needs customer accounts (already supported). Encourages sign-ups and repeat visits. |
@@ -18,7 +18,7 @@ Ranked by **value for money**: impact on sales or staff time, divided by build e
 
 ## Suggested bundles
 - **Phase 2a: quick wins (~2 weeks):** #1 SMS updates, #2 Filipino labels, #3 promo codes, #5 PWA + push.
-- **Phase 2b: payments & insight (~2 weeks):** #4 PayMongo, #6 reports & export.
+- **Phase 2b: payments & insight (~2 weeks):** #4 online payments (done — HitPay), #6 reports & export.
 - **Phase 3: growth:** #7 loyalty, #8 stock counts, then #9–#11 as the business needs them.
 
 ## Small polish items (≤ 1 day each)

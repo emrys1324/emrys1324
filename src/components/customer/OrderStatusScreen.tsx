@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { Logo, useCustomerHeaderStyle } from "./Header";
-import { Alert, Badge, PageLoader } from "@/components/ui";
+import { Alert, Badge, PageLoader, Spinner } from "@/components/ui";
 import { getSupabase } from "@/lib/supabase/client";
 import { enableOrderPush, isNativeApp, pushAvailable, type PushResult } from "@/lib/native";
 import { formatPeso, ORDER_TYPE_LABEL } from "@/lib/format";
@@ -24,6 +24,9 @@ interface PublicOrder {
   total: number;
   payment_method: PaymentMethod;
   payment_status: PaymentStatus;
+  checkout_url: string | null;
+  payment_expires_at: string | null;
+  paid_at: string | null;
   cancel_reason: string | null;
   created_at: string;
   accepted_at: string | null;
@@ -62,7 +65,9 @@ export function OrderStatusScreen({ token }: { token: string }) {
 }
 
 function Inner({ token }: { token: string }) {
-  const isNew = useSearchParams().get("new") === "1";
+  const params = useSearchParams();
+  const isNew = params.get("new") === "1";
+  const returnedFromPayment = params.get("paid") === "1";
   const hs = useCustomerHeaderStyle();
   const [order, setOrder] = useState<PublicOrder | null>(null);
   const [notFound, setNotFound] = useState(false);
@@ -145,6 +150,7 @@ function Inner({ token }: { token: string }) {
   const flow = steps(order.order_type);
   const currentIdx = flow.findIndex((s) => s.status === order.status);
   const cancelled = order.status === "cancelled";
+  const awaitingPayment = order.payment_method === "online" && order.payment_status === "awaiting_payment" && !cancelled;
 
   return (
     <div className="min-h-screen pb-10">
@@ -159,7 +165,7 @@ function Inner({ token }: { token: string }) {
       </header>
 
       <main className="mx-auto max-w-lg space-y-4 px-4 py-5">
-        {isNew && !cancelled && (
+        {isNew && !cancelled && !awaitingPayment && (
           <div className="rounded-3xl bg-sage-600 px-5 py-5 text-white">
             <p className="text-sm font-semibold uppercase tracking-wide text-sage-100">Thank you, {order.customer_name.split(" ")[0]}!</p>
             <p className="font-display text-2xl font-bold">Your order is in.</p>
@@ -214,11 +220,23 @@ function Inner({ token }: { token: string }) {
             </div>
           )}
 
-          {cancelled ? (
+          {order.payment_method === "online" && order.payment_status === "paid" && (
+            <div className="mt-4">
+              <Alert tone="green">Paid online ✓ — thank you!</Alert>
+            </div>
+          )}
+
+          {awaitingPayment ? (
+            <OnlinePaymentCard token={token} total={order.total} expiresAt={order.payment_expires_at} confirming={returnedFromPayment} />
+          ) : cancelled ? (
             <div className="mt-5">
               <Alert>
                 <p className="text-base font-bold">This order was cancelled.</p>
                 {order.cancel_reason && <p className="font-normal">Reason: {order.cancel_reason}</p>}
+                {order.payment_status === "refunded" && <p className="font-normal">Your online payment has been refunded.</p>}
+                {order.payment_method === "online" && order.payment_status === "paid" && (
+                  <p className="font-normal">Your online payment will be refunded by the café.</p>
+                )}
                 <p className="mt-1 font-normal">Sorry about that! Questions? Please call the café.</p>
               </Alert>
             </div>
@@ -291,8 +309,17 @@ function Inner({ token }: { token: string }) {
             <div className="flex justify-between pt-1 text-sm">
               <dt className="text-coffee-700">Payment</dt>
               <dd>
-                <Badge tone={order.payment_status === "paid" ? "green" : "amber"}>
-                  {order.payment_method === "gcash" ? "GCash" : "Cash"} · {order.payment_status === "paid" ? "Paid" : order.payment_method === "gcash" ? "Verifying" : "Pay on receipt"}
+                <Badge tone={order.payment_status === "paid" ? "green" : order.payment_status === "refunded" ? "gray" : "amber"}>
+                  {order.payment_method === "gcash" ? "GCash" : order.payment_method === "online" ? "Online" : "Cash"} ·{" "}
+                  {order.payment_status === "paid"
+                    ? "Paid"
+                    : order.payment_status === "refunded"
+                      ? "Refunded"
+                      : order.payment_status === "awaiting_payment"
+                        ? "Not paid yet"
+                        : order.payment_method === "gcash"
+                          ? "Verifying"
+                          : "Pay on receipt"}
                 </Badge>
               </dd>
             </div>
@@ -309,6 +336,103 @@ function Inner({ token }: { token: string }) {
           Back to menu
         </Link>
       </main>
+    </div>
+  );
+}
+
+/** Shown while an online order is unpaid: resume HitPay checkout, with a countdown. */
+function OnlinePaymentCard({ token, total, expiresAt, confirming }: { token: string; total: number; expiresAt: string | null; confirming: boolean }) {
+  const [now, setNow] = useState(Date.now());
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [showRetry, setShowRetry] = useState(!confirming);
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    const r = confirming ? setTimeout(() => setShowRetry(true), 25_000) : undefined;
+    return () => {
+      clearInterval(t);
+      if (r) clearTimeout(r);
+    };
+  }, [confirming]);
+
+  // Ask the server to confirm with HitPay directly — covers a slow or missed webhook.
+  // On return from HitPay: every 4 s for ~1 min; otherwise once when the page opens.
+  useEffect(() => {
+    let tries = 0;
+    let stop = false;
+    const check = async () => {
+      if (stop) return;
+      tries++;
+      const res = await fetch("/api/payments/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token }) }).catch(() => null);
+      const json = res ? await res.json().catch(() => ({})) : {};
+      if (["paid", "already_paid", "paid_after_cancel"].includes(json.outcome)) return; // realtime/poll refreshes the page
+      if (confirming && tries < 15) setTimeout(check, 4000);
+    };
+    check();
+    return () => {
+      stop = true;
+    };
+  }, [token, confirming]);
+  const left = expiresAt ? Math.max(0, new Date(expiresAt).getTime() - now) : null;
+  const expired = left === 0;
+  const mm = left !== null ? Math.floor(left / 60000) : 0;
+  const ss = left !== null ? Math.floor((left % 60000) / 1000) : 0;
+
+  const pay = async () => {
+    setBusy(true);
+    setError(null);
+    const res = await fetch("/api/payments/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token }) });
+    const json = await res.json().catch(() => ({}));
+    if (res.ok && json.url) {
+      window.location.href = json.url;
+      return;
+    }
+    setBusy(false);
+    setError(json.error ?? "Couldn't open the payment page. Please try again.");
+  };
+
+  if (expired)
+    return (
+      <div className="mt-5">
+        <Alert>
+          <p className="text-base font-bold">The payment window has closed.</p>
+          <p className="font-normal">This order wasn&apos;t paid within 30 minutes, so it won&apos;t be prepared. Please place a new order.</p>
+        </Alert>
+        <Link href="/" className="btn-primary mt-3 w-full">
+          Back to menu
+        </Link>
+      </div>
+    );
+
+  return (
+    <div className="mt-5 space-y-3 rounded-2xl border-2 border-amber-300 bg-amber-50 p-4" data-testid="online-payment-card">
+      {confirming ? (
+        <div className="flex items-center gap-3">
+          <Spinner className="text-amber-700" />
+          <div>
+            <p className="font-bold text-amber-900">Confirming your payment…</p>
+            <p className="text-sm text-amber-900">This usually takes a few seconds. Your order goes to the baristas as soon as it&apos;s confirmed.</p>
+          </div>
+        </div>
+      ) : (
+        <div>
+          <p className="text-base font-bold text-amber-900">Complete your payment</p>
+          <p className="text-sm text-amber-900">
+            Your order is waiting for payment of <strong>{formatPeso(total)}</strong> (GCash or QR Ph). We&apos;ll start preparing it once it&apos;s paid.
+          </p>
+        </div>
+      )}
+      {left !== null && (
+        <p className="text-sm font-semibold text-amber-900" aria-live="off">
+          Time left to pay: {mm}:{String(ss).padStart(2, "0")}
+        </p>
+      )}
+      {error && <Alert>{error}</Alert>}
+      {showRetry && (
+        <button className={confirming ? "btn-secondary w-full" : "btn-primary w-full"} onClick={pay} disabled={busy}>
+          {busy ? <Spinner /> : confirming ? "Didn't finish paying? Pay now" : `Pay now · ${formatPeso(total)}`}
+        </button>
+      )}
     </div>
   );
 }

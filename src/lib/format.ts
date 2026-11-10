@@ -22,6 +22,8 @@ export const PAYMENT_STATUS_LABEL: Record<PaymentStatus, string> = {
   unpaid: "Unpaid",
   for_verification: "GCash – to verify",
   paid: "Paid",
+  awaiting_payment: "Awaiting online payment",
+  refunded: "Refunded",
 };
 
 /** PH mobile: accepts 09XXXXXXXXX, +639XXXXXXXXX, 639XXXXXXXXX, with spaces/dashes. Returns 09… or null. */
