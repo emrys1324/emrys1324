@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { CartProvider } from "@/lib/cart";
 import { NativeBridge } from "@/components/NativeBridge";
+import { BrandBackground } from "@/components/BrandBackground";
+import { StoreSettingsProvider } from "@/lib/store-settings";
 
 export const metadata: Metadata = {
   title: "Pahuway Cafe — Order online",
@@ -23,7 +25,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body>
         <NativeBridge />
-        <CartProvider>{children}</CartProvider>
+        <StoreSettingsProvider>
+          <BrandBackground />
+          <CartProvider>{children}</CartProvider>
+        </StoreSettingsProvider>
       </body>
     </html>
   );

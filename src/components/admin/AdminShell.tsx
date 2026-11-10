@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { Toggle } from "@/components/ui";
 import { getSupabase } from "@/lib/supabase/client";
 import { enableAccountPush, isNativeApp, signOutAndGo } from "@/lib/native";
-import { useStoreSettings } from "@/lib/store-settings";
+import { useLogo, useStoreSettings } from "@/lib/store-settings";
 import { formatHours } from "@/lib/hours";
 
 const NAV = [
@@ -20,6 +20,7 @@ const NAV = [
 export function AdminShell({ email, children }: { email: string; children: React.ReactNode }) {
   const path = usePathname();
   const { settings, open } = useStoreSettings();
+  const logo = useLogo();
   const [busy, setBusy] = useState(false);
   const [pushState, setPushState] = useState<string | null>(null);
 
@@ -41,7 +42,7 @@ export function AdminShell({ email, children }: { email: string; children: React
         <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-2.5">
           <Link href="/admin" className="flex items-center gap-2">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/logo.svg" alt="" className="h-9 w-9 rounded-full bg-cream" />
+            <img src={logo} alt="" className="h-9 w-9 rounded-full bg-cream object-cover" />
             <span className="hidden font-display text-lg font-bold sm:inline">Pahuway Staff</span>
           </Link>
           {settings && (

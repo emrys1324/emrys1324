@@ -18,6 +18,9 @@ export interface StoreSettings {
   gcash_qr_url: string | null;
   contact_phone: string | null;
   contact_email: string | null;
+  logo_url: string | null;
+  background_url: string | null;
+  background_fade: number;
 }
 
 export interface Category {

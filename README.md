@@ -26,7 +26,7 @@ There's also an optional **account** (`/account`) that saves the customer's addr
 - **Menu**: items, categories and photos, with a one-tap **Sold out** switch.
 - **Options**: choice groups and extra prices (e.g. turn off "Oat milk" when it runs out).
 - **Zones**: barangays, fees and on/off switches.
-- **Settings**: open/closed switch (also in the header), hours, delivery minimum, prep time, GCash QR, and a **Riders** section to create rider logins.
+- **Settings**: **branding** (upload your logo and a background photo with a fade control — updates live everywhere), open/closed switch (also in the header), hours, delivery minimum, prep time, GCash QR, and a **Riders** section to create rider logins.
 - **Summary**: orders, sales, average order, top 5 items, and sales by order type and payment method, for any day.
 
 **Riders** (`/rider`): only *their* assigned deliveries, with tap-to-call, address, landmark, a Maps link and the **amount to collect**, plus big **Picked up** and **Delivered** buttons.
@@ -111,6 +111,7 @@ Open http://localhost:3000. Staff and riders sign in at http://localhost:3000/lo
 | Database rules without Docker | see `supabase/tests/supabase_stubs.sql` | Runs the same scenarios on plain Postgres with stand-ins for Supabase's schemas. |
 | Push sender (Firebase + APNs mocked, 12 checks) | `npm run test:push` | Needs local Supabase + `seed:users`. |
 | App-mode behaviour (13 checks) | `npm run test:native` | Runs the site with Capacitor's real Android bridge and a fake native side: push registration, Notify me, no-Firebase safety. Needs the app on :3000. |
+| Branding (11 checks) | `npm run test:branding` | Admin uploads logo + background; customers see it live; staff screens stay plain; reset to defaults. |
 | End-to-end acceptance test | `npm run test:e2e` | Needs local Supabase + `seed:users` + the app on :3000, plus Playwright (`npm i -D playwright && npx playwright install chromium`). Drives a customer phone, staff tablet and rider phone at once and re-creates the screenshots. |
 
 The end-to-end test covers every acceptance criterion: a guest orders a customised iced latte for delivery and pays by GCash screenshot. Staff see it instantly with a chime, verify payment, accept, assign the rider and mark it ready, and the customer's page updates live at each step. The rider sees only their order and marks it picked up, then delivered. Marking Americano sold out removes its Add button on the customer's phone at once. Closing the store blocks ordering with a friendly message.
