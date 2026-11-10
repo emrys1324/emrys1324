@@ -18,10 +18,10 @@ More screenshots are in [`docs/screenshots/`](docs/screenshots).
 
 **Customers** go from menu to order placed in 3 screens:
 1. **Menu**: categories, photos, prices and "Sold out" badges. Tap an item to choose options (hot/iced, sugar level, milk, add-ons, pizza size) with live price updates. The cart opens as a drawer on the same screen.
-2. **Checkout** (one page): pickup, delivery or dine-in; ASAP or a 15-minute time slot; name and mobile number. Delivery adds a barangay (the fee applies automatically), street/purok, landmark and notes to the rider. Payment is cash, or GCash (QR code + reference number + screenshot upload).
+2. **Checkout** (one page): pickup, delivery or dine-in; ASAP or a 15-minute time slot; name and mobile number. Delivery adds a barangay (the fee applies automatically), street/purok, landmark, notes to the rider and an optional **map pin** (tap the map or "Use my current location"; OpenStreetMap, no API key). Payment is cash, or GCash (QR code + reference number + screenshot upload).
 3. **Confirmation & live status**: order number (e.g. `PH-0001`), a live progress timeline, and a shareable link.
 
-There's also an optional **account** (`/account`) that saves the customer's address and shows their order history.
+There's also an optional **account** (`/account`) that saves the customer's address (and map pin) and shows their order history.
 
 **Staff** (`/admin`):
 - **Orders board**: live columns (New → Preparing → Ready → Out for delivery) and a loud chime for new orders that repeats every 30 s until they're accepted. Staff can accept, or reject with a reason, assign a rider and verify GCash payments (the screenshot is shown).
@@ -31,7 +31,7 @@ There's also an optional **account** (`/account`) that saves the customer's addr
 - **Settings**: **branding** (logo, background photo with fade, store name, staff header title, and customer/staff header colours with automatically readable text — updates live everywhere), open/closed switch (also in the header), hours, delivery minimum, prep time, GCash QR, and a **Riders** section to create rider logins.
 - **Summary**: orders, sales, average order, top 5 items, and sales by order type and payment method, for any day.
 
-**Riders** (`/rider`): only *their* assigned deliveries, with tap-to-call, address, landmark, a Maps link and the **amount to collect**, plus big **Picked up** and **Delivered** buttons.
+**Riders** (`/rider`): only *their* assigned deliveries, with tap-to-call, address, landmark, a **map preview of the customer's pin with Google Maps and Waze buttons** (falls back to the typed address when there's no pin) and the **amount to collect**, plus big **Picked up** and **Delivered** buttons.
 
 ## Why this stack
 
@@ -117,6 +117,7 @@ Open http://localhost:3000. Staff and riders sign in at http://localhost:3000/lo
 | Online payments: routes (24 checks) | `npm run test:payments` | Payment requests, webhook HMAC (form + JSON), API re-confirmation, amounts, idempotency, return-check vs. a mock HitPay. |
 | Online payments: browser flow (14 checks) | `npm run test:payments:e2e` | Pay online → board shows order only when paid → refund → resume abandoned checkout → confirm without webhook. See docs/PAYMENTS.md for the env to start the app with. |
 | Branding (21 checks) | `npm run test:branding` | Logo, background, store name, staff title and header colours: live updates, measured text contrast, staff screens stay plain, reset to defaults. |
+| Delivery map pin (23 checks) | `npm run test:maps` | Pin by tap / current location / remove, saved on the order + account, guest pin remembered, server rejects pins outside the Philippines, rider Google Maps/Waze links + no-pin fallback, staff pin link. |
 | End-to-end acceptance test | `npm run test:e2e` | Needs local Supabase + `seed:users` + the app on :3000, plus Playwright (`npm i -D playwright && npx playwright install chromium`). Drives a customer phone, staff tablet and rider phone at once and re-creates the screenshots. |
 
 The end-to-end test covers every acceptance criterion: a guest orders a customised iced latte for delivery and pays by GCash screenshot. Staff see it instantly with a chime, verify payment, accept, assign the rider and mark it ready, and the customer's page updates live at each step. The rider sees only their order and marks it picked up, then delivered. Marking Americano sold out removes its Add button on the customer's phone at once. Closing the store blocks ordering with a friendly message.

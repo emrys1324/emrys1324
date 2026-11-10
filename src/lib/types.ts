@@ -114,6 +114,8 @@ export interface Order {
   zone_name: string | null;
   street: string | null;
   landmark: string | null;
+  delivery_lat: number | string | null;
+  delivery_lng: number | string | null;
   rider_notes: string | null;
   subtotal: number;
   delivery_fee: number;

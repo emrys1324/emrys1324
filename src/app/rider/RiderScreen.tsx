@@ -8,6 +8,8 @@ import { formatPeso, friendlyError, STATUS_LABEL } from "@/lib/format";
 import { formatTime, storeNow } from "@/lib/hours";
 import { playChime, unlockAudio } from "@/lib/sound";
 import type { Order } from "@/lib/types";
+import { LeafletMap } from "@/components/map/LeafletMap";
+import { googleMapsDirections, toLatLng, wazeDirections } from "@/lib/maps";
 
 export function RiderScreen() {
   const [orders, setOrders] = useState<Order[] | null>(null);
@@ -123,7 +125,8 @@ export function RiderScreen() {
 
         {active.map((o) => {
           const collect = o.payment_method === "cash" ? Number(o.total) : 0;
-          const mapQuery = encodeURIComponent(`${o.street ?? ""} ${o.landmark ?? ""} ${o.zone_name ?? ""} San Agustin Romblon`);
+          const pin = toLatLng(o.delivery_lat, o.delivery_lng);
+          const addressText = [o.street, o.landmark, o.zone_name, "San Agustin, Romblon"].filter(Boolean).join(", ");
           return (
             <article key={o.id} className="card overflow-hidden">
               <div className="flex items-center justify-between bg-coffee-800 px-4 py-3 text-cream">
@@ -147,9 +150,19 @@ export function RiderScreen() {
                   <p className="text-lg font-semibold">{o.street}</p>
                   {o.landmark && <p>Landmark: {o.landmark}</p>}
                   {o.rider_notes && <p className="mt-1 rounded-lg bg-amber-50 px-2 py-1 text-sm font-medium text-amber-900">Note: {o.rider_notes}</p>}
-                  <a className="mt-1 inline-block text-sm font-semibold text-coffee-700 underline" href={`https://www.google.com/maps/search/?api=1&query=${mapQuery}`} target="_blank" rel="noreferrer">
-                    Open in Maps
-                  </a>
+                  {pin ? (
+                    <LeafletMap value={pin} className="mt-2 h-40 w-full" label={`Map of ${o.customer_name}'s pinned location`} />
+                  ) : (
+                    <p className="mt-1 text-xs text-coffee-600">No map pin — directions use the typed address.</p>
+                  )}
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <a className="btn-secondary btn-sm" href={googleMapsDirections(pin, addressText)} target="_blank" rel="noreferrer" data-testid="nav-google">
+                      Google Maps
+                    </a>
+                    <a className="btn-secondary btn-sm" href={wazeDirections(pin, addressText)} target="_blank" rel="noreferrer" data-testid="nav-waze">
+                      Waze
+                    </a>
+                  </div>
                 </div>
                 <div className="flex items-center justify-between rounded-2xl border-2 border-coffee-200 p-3">
                   <span className="font-semibold">{collect ? "Collect cash" : o.payment_method === "online" ? "Paid online" : "Paid via GCash"}</span>

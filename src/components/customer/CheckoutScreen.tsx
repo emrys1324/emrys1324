@@ -12,6 +12,8 @@ import { formatPeso, friendlyError, normalizePhone } from "@/lib/format";
 import { formatClock, timeSlots } from "@/lib/hours";
 import { useStoreSettings } from "@/lib/store-settings";
 import type { OrderType, PaymentMethod, Zone } from "@/lib/types";
+import { MapPicker } from "@/components/map/MapPicker";
+import { isLatLng, toLatLng, type LatLng } from "@/lib/maps";
 
 const GUEST_KEY = "pahuway-guest-details";
 
@@ -54,6 +56,7 @@ export function CheckoutScreen() {
   const [street, setStreet] = useState("");
   const [landmark, setLandmark] = useState("");
   const [riderNotes, setRiderNotes] = useState("");
+  const [pin, setPin] = useState<LatLng | null>(null);
   const [payment, setPayment] = useState<PaymentMethod>("cash");
   const [gcashRef, setGcashRef] = useState("");
   const [proof, setProof] = useState<File | null>(null);
@@ -82,17 +85,20 @@ export function CheckoutScreen() {
           setZoneId(saved.zoneId ?? "");
           setStreet(saved.street ?? "");
           setLandmark(saved.landmark ?? "");
+          if (isLatLng(saved.pin)) setPin(saved.pin);
         }
       } catch {}
       const { data: auth } = await supabase.auth.getUser();
       if (!auth.user) return;
-      const { data: p } = await supabase.from("users").select("full_name, phone, zone_id, street, landmark").eq("id", auth.user.id).single();
+      const { data: p } = await supabase.from("users").select("full_name, phone, zone_id, street, landmark, saved_lat, saved_lng").eq("id", auth.user.id).single();
       if (p) {
         if (p.full_name) setName(p.full_name);
         if (p.phone) setPhone(p.phone);
         if (p.zone_id) setZoneId(p.zone_id);
         if (p.street) setStreet(p.street);
         if (p.landmark) setLandmark(p.landmark);
+        const savedPin = toLatLng(p.saved_lat, p.saved_lng);
+        if (savedPin) setPin(savedPin);
       }
     })();
   }, []);
@@ -191,6 +197,8 @@ export function CheckoutScreen() {
           street,
           landmark,
           rider_notes: riderNotes,
+          lat: orderType === "delivery" && pin ? pin.lat : null,
+          lng: orderType === "delivery" && pin ? pin.lng : null,
           payment_method: payment,
           gcash_reference: payment === "gcash" ? gcashRef.replace(/\s/g, "") : null,
           payment_proof_path: proofPath,
@@ -200,8 +208,13 @@ export function CheckoutScreen() {
       if (error) throw new Error(error.message);
 
       try {
-        localStorage.setItem(GUEST_KEY, JSON.stringify({ name: name.trim(), phone: normalizePhone(phone), zoneId, street, landmark }));
+        localStorage.setItem(GUEST_KEY, JSON.stringify({ name: name.trim(), phone: normalizePhone(phone), zoneId, street, landmark, pin: orderType === "delivery" ? pin : undefined }));
       } catch {}
+      if (orderType === "delivery" && pin) {
+        // remember the pin on a signed-in customer's account for next time (best effort)
+        const { data: auth } = await supabase.auth.getUser();
+        if (auth.user) await supabase.from("users").update({ saved_lat: pin.lat, saved_lng: pin.lng }).eq("id", auth.user.id);
+      }
       saveRecentOrder({ token: data.token, order_number: data.order_number, created_at: new Date().toISOString() });
       setDone(true);
       clear();
@@ -372,6 +385,7 @@ export function CheckoutScreen() {
                 </label>
                 <input id="rider-notes" className="input" value={riderNotes} onChange={(e) => setRiderNotes(e.target.value)} maxLength={200} placeholder="Please call when you're near" />
               </div>
+              <MapPicker value={pin} onChange={setPin} />
             </>
           )}
         </section>

@@ -12,7 +12,7 @@ Ranked by **value for money**: impact on sales or staff time, divided by build e
 | 6 | **Sales reports & CSV export** (week/month, by item, by hour) | Medium | Low–Med | 3 days | Helps with staffing and bookkeeping; builds on `daily_summary`. |
 | 7 | **Loyalty stamps** (e.g. 10th drink free) | Medium | Medium | 5–7 days | Needs customer accounts (already supported). Encourages sign-ups and repeat visits. |
 | 8 | **Simple stock counts** (auto sold-out when a count hits 0) | Medium | Medium | 5–7 days | Useful for limited pastries. Start with per-item daily counts, not full ingredient-level inventory. |
-| 9 | **Live rider location on the status page** | Low–Med | Medium–High | 7–10 days | Nice to have, but San Agustin distances are short and phone tracking drains batteries. Do this after SMS updates. |
+| 9 | **Live rider location on the status page** (the customer's delivery pin + rider Google Maps/Waze directions are already done) | Low–Med | Medium–High | 7–10 days | Nice to have, but San Agustin distances are short and phone tracking drains batteries. Do this after SMS updates. |
 | 10 | **POS integration** | Varies | High | 2–4 weeks | Only worth it if the café adopts a POS with an API (e.g. Loyverse). Otherwise the staff board already covers order taking. |
 | 11 | **Multi-branch support** | Low (today) | High | 2–3 weeks | Add `branch_id` across settings, menu, zones and orders and extend the access rules. Build when a second branch is actually planned. |
 
