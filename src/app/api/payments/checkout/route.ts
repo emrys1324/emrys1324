@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createCheckoutSession, paymongoConfigured } from "@/lib/paymongo";
+import { createPaymentRequest, hitpayConfigured } from "@/lib/hitpay";
 import { getAdminSupabase } from "@/lib/supabase/admin";
 
 /**
@@ -10,7 +10,7 @@ export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   const db = getAdminSupabase();
-  if (!db || !paymongoConfigured()) {
+  if (!db || !hitpayConfigured()) {
     return NextResponse.json({ error: "Online payment isn't set up yet. Please pay with cash or GCash." }, { status: 503 });
   }
   const { token } = (await req.json().catch(() => ({}))) as { token?: string };
@@ -18,7 +18,7 @@ export async function POST(req: Request) {
 
   const { data: order } = await db
     .from("orders")
-    .select("id, order_number, public_token, status, total, delivery_fee, payment_method, payment_status, payment_expires_at, checkout_url, order_items(item_name, unit_price, quantity)")
+    .select("id, order_number, public_token, status, total, customer_name, customer_phone, payment_method, payment_status, payment_expires_at, checkout_url")
     .eq("public_token", token)
     .single();
   if (!order || order.payment_method !== "online") return NextResponse.json({ error: "Order not found." }, { status: 404 });
@@ -26,19 +26,19 @@ export async function POST(req: Request) {
   if (order.status === "cancelled" || (order.payment_expires_at && new Date(order.payment_expires_at) < new Date())) {
     return NextResponse.json({ error: "The payment window for this order has closed. Please place a new order." }, { status: 410 });
   }
-  if (order.checkout_url) return NextResponse.json({ url: order.checkout_url }); // resume the same session
+  if (order.checkout_url) return NextResponse.json({ url: order.checkout_url }); // resume the same payment request
 
   const site = process.env.NEXT_PUBLIC_SITE_URL || new URL(req.url).origin;
   try {
-    const session = await createCheckoutSession(
-      { id: order.id, order_number: order.order_number, total: order.total, delivery_fee: order.delivery_fee, items: order.order_items ?? [] },
-      { success: `${site}/order/${token}?new=1&paid=1`, cancel: `${site}/order/${token}?new=1` },
-    );
-    const { error } = await db.from("orders").update({ paymongo_checkout_id: session.id, checkout_url: session.url }).eq("id", order.id);
+    const pr = await createPaymentRequest(order, {
+      redirect: `${site}/order/${token}?new=1&paid=1`,
+      webhook: `${site}/api/payments/webhook`,
+    });
+    const { error } = await db.from("orders").update({ gateway_ref: pr.id, checkout_url: pr.url, payment_gateway: "hitpay" }).eq("id", order.id);
     if (error) throw new Error(error.message);
-    return NextResponse.json({ url: session.url });
+    return NextResponse.json({ url: pr.url });
   } catch (e) {
-    console.error("checkout session failed", e);
+    console.error("HitPay payment request failed", e);
     return NextResponse.json({ error: "We couldn't start the online payment. Please try again in a moment." }, { status: 502 });
   }
 }

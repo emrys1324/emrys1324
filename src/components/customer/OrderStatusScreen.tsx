@@ -340,7 +340,7 @@ function Inner({ token }: { token: string }) {
   );
 }
 
-/** Shown while an online order is unpaid: resume PayMongo checkout, with a countdown. */
+/** Shown while an online order is unpaid: resume HitPay checkout, with a countdown. */
 function OnlinePaymentCard({ token, total, expiresAt, confirming }: { token: string; total: number; expiresAt: string | null; confirming: boolean }) {
   const [now, setNow] = useState(Date.now());
   const [busy, setBusy] = useState(false);
@@ -354,6 +354,25 @@ function OnlinePaymentCard({ token, total, expiresAt, confirming }: { token: str
       if (r) clearTimeout(r);
     };
   }, [confirming]);
+
+  // Ask the server to confirm with HitPay directly — covers a slow or missed webhook.
+  // On return from HitPay: every 4 s for ~1 min; otherwise once when the page opens.
+  useEffect(() => {
+    let tries = 0;
+    let stop = false;
+    const check = async () => {
+      if (stop) return;
+      tries++;
+      const res = await fetch("/api/payments/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token }) }).catch(() => null);
+      const json = res ? await res.json().catch(() => ({})) : {};
+      if (["paid", "already_paid", "paid_after_cancel"].includes(json.outcome)) return; // realtime/poll refreshes the page
+      if (confirming && tries < 15) setTimeout(check, 4000);
+    };
+    check();
+    return () => {
+      stop = true;
+    };
+  }, [token, confirming]);
   const left = expiresAt ? Math.max(0, new Date(expiresAt).getTime() - now) : null;
   const expired = left === 0;
   const mm = left !== null ? Math.floor(left / 60000) : 0;

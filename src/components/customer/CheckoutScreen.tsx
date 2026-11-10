@@ -206,7 +206,7 @@ export function CheckoutScreen() {
       setDone(true);
       clear();
       if (payment === "online") {
-        // Hand over to PayMongo's secure page; if that fails, the status page offers "Pay now" again.
+        // Hand over to HitPay's secure page; if that fails, the status page offers "Pay now" again.
         const res = await fetch("/api/payments/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: data.token }) });
         const json = await res.json().catch(() => ({}));
         if (res.ok && json.url) {
@@ -407,7 +407,7 @@ export function CheckoutScreen() {
 
           {payment === "online" && (
             <div className="rounded-2xl bg-sage-100 p-4 text-sm text-sage-700" data-testid="online-pay-info">
-              <p className="font-bold">You&apos;ll pay {formatPeso(total)} on PayMongo&apos;s secure page.</p>
+              <p className="font-bold">You&apos;ll pay {formatPeso(total)} on HitPay&apos;s secure page.</p>
               <p>Choose GCash or QR Ph (scan with any bank or e-wallet app). Your order goes to our baristas as soon as the payment is confirmed. Please pay within 30 minutes.</p>
             </div>
           )}

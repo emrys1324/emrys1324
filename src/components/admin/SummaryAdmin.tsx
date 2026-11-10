@@ -72,7 +72,7 @@ export function SummaryAdmin() {
                 <div className="mt-4 border-t border-coffee-100 pt-3 text-sm">
                   {data.by_payment.map((p) => (
                     <p key={p.payment_method} className="flex justify-between">
-                      <span>{p.payment_method === "gcash" ? "GCash (manual)" : p.payment_method === "online" ? "Online (PayMongo)" : "Cash"} ({p.orders})</span>
+                      <span>{p.payment_method === "gcash" ? "GCash (manual)" : p.payment_method === "online" ? "Online (HitPay)" : "Cash"} ({p.orders})</span>
                       <span className="font-semibold tabular-nums">{formatPeso(p.sales)}</span>
                     </p>
                   ))}

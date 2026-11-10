@@ -1,47 +1,42 @@
 import { NextResponse } from "next/server";
-import { verifyWebhookSignature } from "@/lib/paymongo";
+import { verifyFormWebhook, verifyJsonWebhook } from "@/lib/hitpay";
+import { confirmPayment } from "@/lib/payments";
 import { getAdminSupabase } from "@/lib/supabase/admin";
 
 /**
- * PayMongo webhook (event: checkout_session.payment.paid).
- * Verifies the signature, then marks the order paid in the database (idempotent).
+ * HitPay webhook. Accepts both HitPay formats:
+ *  • payment-request webhook (form-encoded, `hmac` field), and
+ *  • event webhook (JSON, `Hitpay-Signature` header).
+ * After the signature check, the payment is re-confirmed with HitPay's API before
+ * the order is marked paid (amount comes from HitPay, not from the webhook body).
  */
 export const runtime = "nodejs";
 
-interface PaidEvent {
-  data?: {
-    attributes?: {
-      type?: string;
-      livemode?: boolean;
-      data?: { id?: string; attributes?: { payments?: { id: string; attributes?: { amount?: number; status?: string } }[] } };
-    };
-  };
-}
-
 export async function POST(req: Request) {
+  const salt = process.env.HITPAY_SALT || "";
   const raw = await req.text();
-  const secret = process.env.PAYMONGO_WEBHOOK_SECRET || "";
-  const sig = verifyWebhookSignature(raw, req.headers.get("paymongo-signature"), secret);
-  if (!sig.ok) return NextResponse.json({ error: sig.reason }, { status: 401 });
+  const isJson = (req.headers.get("content-type") || "").includes("application/json");
 
-  const evt = JSON.parse(raw) as PaidEvent;
-  const type = evt.data?.attributes?.type;
-  if (type !== "checkout_session.payment.paid") return NextResponse.json({ ignored: type ?? "unknown" });
-
-  const session = evt.data?.attributes?.data;
-  const payment = session?.attributes?.payments?.find((p) => p.attributes?.status === "paid") ?? session?.attributes?.payments?.[0];
-  if (!session?.id || !payment?.id || typeof payment.attributes?.amount !== "number") {
-    return NextResponse.json({ error: "malformed event" }, { status: 400 });
+  let ref: string | undefined;
+  if (isJson) {
+    if (!verifyJsonWebhook(raw, req.headers.get("hitpay-signature"), salt)) return NextResponse.json({ error: "invalid signature" }, { status: 401 });
+    const body = JSON.parse(raw) as { payment_request_id?: string; payment_request?: { id?: string }; id?: string };
+    ref = body.payment_request_id ?? body.payment_request?.id;
+  } else {
+    const fields = Object.fromEntries(new URLSearchParams(raw));
+    if (!verifyFormWebhook(fields, salt)) return NextResponse.json({ error: "invalid signature" }, { status: 401 });
+    if (fields.status && fields.status !== "completed") return NextResponse.json({ ignored: fields.status });
+    ref = fields.payment_request_id;
   }
+  if (!ref) return NextResponse.json({ ignored: "no payment request id" });
 
   const db = getAdminSupabase();
-  if (!db) return NextResponse.json({ error: "server not configured" }, { status: 500 }); // PayMongo retries
-  const { data: outcome, error } = await db.rpc("mark_order_paid", {
-    p_checkout_id: session.id,
-    p_payment_id: payment.id,
-    p_amount_centavos: payment.attributes.amount,
-  });
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 }); // PayMongo retries
-  if (outcome === "amount_mismatch") console.error("PayMongo amount mismatch", session.id, payment.attributes.amount);
-  return NextResponse.json({ outcome, livemode: sig.livemode });
+  if (!db) return NextResponse.json({ error: "server not configured" }, { status: 500 }); // HitPay retries
+  try {
+    const r = await confirmPayment(db, ref);
+    return NextResponse.json(r);
+  } catch (e) {
+    console.error("HitPay webhook confirm failed", e);
+    return NextResponse.json({ error: "confirm failed" }, { status: 500 }); // HitPay retries
+  }
 }

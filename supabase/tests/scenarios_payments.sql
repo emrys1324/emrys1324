@@ -36,10 +36,10 @@ commit;
 grant select on o1 to anon;
 
 -- checkout session attached by the server
-update orders set paymongo_checkout_id = 'cs_test_1', checkout_url = 'https://checkout.paymongo.com/cs_test_1'
+update orders set gateway_ref = 'cs_test_1', checkout_url = 'https://securecheckout.hit-pay.com/payment-request/@pahuway/cs_test_1/checkout'
  where public_token = (select (r->>'token')::uuid from o1);
 set role anon;
-select pg_temp.check(get_order_by_token((select (r->>'token')::uuid from o1))->>'checkout_url' = 'https://checkout.paymongo.com/cs_test_1', 'customer can resume payment via the status link');
+select pg_temp.check(get_order_by_token((select (r->>'token')::uuid from o1))->>'checkout_url' = 'https://securecheckout.hit-pay.com/payment-request/@pahuway/cs_test_1/checkout', 'customer can resume payment via the status link');
 select pg_temp.expect_error($q$select mark_order_paid('cs_test_1', 'pay_x', 15000)$q$, 'permission denied');
 reset role;
 set role authenticated;
@@ -51,7 +51,7 @@ set role service_role;
 select pg_temp.check(mark_order_paid('cs_unknown', 'pay_x', 15000) = 'not_found', 'unknown checkout ignored');
 select pg_temp.check(mark_order_paid('cs_test_1', 'pay_x', 100) = 'amount_mismatch', 'wrong amount refused');
 reset role;
-select pg_temp.check((select payment_status::text from orders where paymongo_checkout_id = 'cs_test_1') = 'awaiting_payment', 'order still unpaid after mismatch');
+select pg_temp.check((select payment_status::text from orders where gateway_ref = 'cs_test_1') = 'awaiting_payment', 'order still unpaid after mismatch');
 begin;
 set local role service_role;
 select pg_temp.check(mark_order_paid('cs_test_1', 'pay_123', 15000) = 'paid', 'correct amount (₱150 = 15000 centavos) marks the order paid');
@@ -62,7 +62,7 @@ commit;
 set role service_role;
 select pg_temp.check(mark_order_paid('cs_test_1', 'pay_123', 15000) = 'already_paid', 'duplicate webhook is harmless');
 reset role;
-select pg_temp.check((select paid_at is not null and paymongo_payment_id = 'pay_123' from orders where paymongo_checkout_id = 'cs_test_1'), 'payment id and time recorded');
+select pg_temp.check((select paid_at is not null and gateway_payment_id = 'pay_123' from orders where gateway_ref = 'cs_test_1'), 'payment id and time recorded');
 set role anon;
 select pg_temp.check(get_order_by_token((select (r->>'token')::uuid from o1))->>'checkout_url' is null, 'pay link hidden once paid');
 reset role;
@@ -72,10 +72,10 @@ set role anon;
 create temp table o2 as select place_order('{"customer_name":"Ben","customer_phone":"09173334444","order_type":"pickup","payment_method":"online"}',
   '[{"menu_item_id":"30000000-0000-0000-0000-000000000014","quantity":1}]') r;
 reset role;
-update orders set paymongo_checkout_id = 'cs_test_2', payment_expires_at = now() - interval '1 minute'
+update orders set gateway_ref = 'cs_test_2', payment_expires_at = now() - interval '1 minute'
  where public_token = (select (r->>'token')::uuid from o2);
 select pg_temp.check(expire_unpaid_orders() = 1, 'expired unpaid order cancelled by the job');
-select pg_temp.check((select status::text = 'cancelled' and cancel_reason like 'Online payment was not completed%' from orders where paymongo_checkout_id = 'cs_test_2'), 'cancel reason explains the missed payment');
+select pg_temp.check((select status::text = 'cancelled' and cancel_reason like 'Online payment was not completed%' from orders where gateway_ref = 'cs_test_2'), 'cancel reason explains the missed payment');
 select pg_temp.check(expire_unpaid_orders() = 0, 'paid orders are never expired');
 set role service_role;
 select pg_temp.check(mark_order_paid('cs_test_2', 'pay_late', 8500) = 'paid_after_cancel', 'late payment on a cancelled order is flagged for refund');

@@ -541,20 +541,20 @@ function OnlinePaymentsSection({ enabled, onChange }: { enabled: boolean; onChan
       <label className="flex items-center justify-between gap-3">
         <span>
           <span id="online-pay-title" className="block font-bold">
-            Online payments (PayMongo)
+            Online payments (HitPay)
           </span>
           <span className="text-sm text-coffee-700">Customers pay with GCash or QR Ph at checkout. Orders reach the board only after payment is confirmed.</span>
         </span>
         <Toggle checked={enabled && ready} onChange={onChange} disabled={!ready} label="Accept online payments" />
       </label>
       {status && !ready && (
-        <p className="rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-900" data-testid="paymongo-not-configured">
-          Not set up yet: add your PayMongo keys to the website&apos;s server settings first (see docs/PAYMENTS.md). Until then customers can pay cash or manual GCash.
+        <p className="rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-900" data-testid="payments-not-configured">
+          Not set up yet: add your HitPay API key and salt to the website&apos;s server settings first (see docs/PAYMENTS.md). Until then customers can pay cash or manual GCash.
         </p>
       )}
       {ready && status?.testMode && (
         <p className="rounded-2xl bg-sky-100 px-4 py-3 text-sm text-sky-900">
-          <strong>Test mode:</strong> PayMongo test keys are installed, so no real money moves. Switch to live keys before opening to customers.
+          <strong>Test mode:</strong> HitPay sandbox is active, so no real money moves. Set HITPAY_ENV=live with your live keys before opening to customers.
         </p>
       )}
     </section>

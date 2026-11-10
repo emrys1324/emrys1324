@@ -43,7 +43,7 @@ export function OrderDetail({ order, riders, onClose }: { order: Order | null; r
 
   const refundLabel = `Refund ${formatPeso(o.total)} to customer`;
   const refund = async () => {
-    if (!confirm(`Refund ${formatPeso(o.total)} for ${o.order_number} through PayMongo?`)) return;
+    if (!confirm(`Refund ${formatPeso(o.total)} for ${o.order_number} through HitPay?`)) return;
     setBusy(refundLabel);
     setError(null);
     const res = await fetch("/api/payments/refund", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ order_id: o.id }) });
@@ -205,7 +205,7 @@ export function OrderDetail({ order, riders, onClose }: { order: Order | null; r
 
         <div className="rounded-2xl bg-white p-4">
           <div className="flex items-center justify-between">
-            <p className="font-bold">{o.payment_method === "gcash" ? "GCash (manual)" : o.payment_method === "online" ? "Online · PayMongo" : "Cash"}</p>
+            <p className="font-bold">{o.payment_method === "gcash" ? "GCash (manual)" : o.payment_method === "online" ? "Online · HitPay" : "Cash"}</p>
             <Badge tone={o.payment_status === "paid" ? "green" : o.payment_status === "for_verification" ? "red" : "gray"}>{PAYMENT_STATUS_LABEL[o.payment_status]}</Badge>
           </div>
           {o.payment_method === "gcash" && (
@@ -235,9 +235,9 @@ export function OrderDetail({ order, riders, onClose }: { order: Order | null; r
           {o.payment_method === "online" && (
             <div className="mt-3 space-y-2 text-sm">
               {o.paid_at && <p className="text-coffee-700">Paid {formatDateTime(o.paid_at)} via GCash / QR Ph — no need to collect cash.</p>}
-              {o.paymongo_payment_id && (
+              {o.gateway_payment_id && (
                 <p className="text-coffee-600">
-                  PayMongo ref: <span className="font-mono">{o.paymongo_payment_id}</span>
+                  HitPay ref: <span className="font-mono">{o.gateway_payment_id}</span>
                 </p>
               )}
               {o.payment_status === "refunded" && (

@@ -122,9 +122,10 @@ export interface Order {
   payment_status: PaymentStatus;
   gcash_reference: string | null;
   payment_proof_path: string | null;
-  paymongo_checkout_id?: string | null;
-  paymongo_payment_id?: string | null;
-  paymongo_refund_id?: string | null;
+  gateway_ref?: string | null;
+  gateway_payment_id?: string | null;
+  gateway_refund_id?: string | null;
+  payment_gateway?: string | null;
   checkout_url?: string | null;
   payment_expires_at?: string | null;
   paid_at?: string | null;
