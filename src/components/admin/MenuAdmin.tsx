@@ -3,7 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Alert, Badge, ItemPhoto, PageLoader, Sheet, Spinner, Toggle } from "@/components/ui";
 import { getSupabase } from "@/lib/supabase/client";
 import { formatPeso } from "@/lib/format";
-import { uploadPublicImage } from "@/lib/upload";
+import { deletePublicImage, uploadPublicImage } from "@/lib/upload";
 import type { Category, MenuItem, OptionGroup } from "@/lib/types";
 
 type Draft = Partial<MenuItem> & { groupIds: string[] };
@@ -69,7 +69,7 @@ export function MenuAdmin() {
     load();
   };
 
-  const shown = items.filter((i) => filter === "all" || i.category_id === filter);
+  const shown = items.filter((i) => filter === "all" || (filter === "no-photo" ? !i.photo_url : i.category_id === filter));
 
   return (
     <div className="space-y-4">
@@ -77,7 +77,7 @@ export function MenuAdmin() {
         <h1 className="font-display text-2xl font-bold">Menu</h1>
         <button
           className="btn-primary"
-          onClick={() => setEditing({ category_id: filter !== "all" ? filter : cats[0]?.id, price: 0, is_active: true, is_sold_out: false, groupIds: [] })}
+          onClick={() => setEditing({ category_id: filter !== "all" && filter !== "no-photo" ? filter : cats[0]?.id, price: 0, is_active: true, is_sold_out: false, groupIds: [] })}
           disabled={cats.length === 0}
         >
           + Add item
@@ -92,7 +92,7 @@ export function MenuAdmin() {
       <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
         <section className="card p-3 sm:p-4">
           <div className="no-scrollbar mb-3 flex gap-2 overflow-x-auto">
-            {[{ id: "all", name: "All" }, ...cats].map((c) => (
+            {[{ id: "all", name: "All" }, { id: "no-photo", name: `No photo (${items.filter((x) => !x.photo_url).length})` }, ...cats].map((c) => (
               <button key={c.id} onClick={() => setFilter(c.id)} className={`chip ${filter === c.id ? "border-coffee-800 bg-coffee-800 text-cream" : "border-coffee-200 bg-white"}`}>
                 {c.name}
               </button>
@@ -101,7 +101,7 @@ export function MenuAdmin() {
           <ul className="divide-y divide-coffee-100">
             {shown.map((i) => (
               <li key={i.id} className="flex items-center gap-3 py-3">
-                <ItemPhoto src={i.photo_url} alt="" className="h-14 w-14 shrink-0 rounded-xl" />
+                <PhotoButton item={i} onSaved={(url) => setItems((prev) => prev.map((x) => (x.id === i.id ? { ...x, photo_url: url } : x)))} onError={setError} />
                 <button
                   className="min-w-0 flex-1 text-left"
                   onClick={() => setEditing({ ...i, groupIds: (i.menu_item_option_groups ?? []).map((g) => g.group_id) })}
@@ -171,6 +171,12 @@ function ItemEditor({ draft, cats, groups, onClose, onSaved }: { draft: Draft; c
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => setD((x) => ({ ...x, [k]: v }));
+  // a photo uploaded in this editor but not (yet) saved
+  const unsavedUpload = d.photo_url && d.photo_url !== draft.photo_url ? d.photo_url : null;
+  const close = async () => {
+    await deletePublicImage(unsavedUpload); // closed without saving → don't leave the upload behind
+    onClose();
+  };
 
   const save = async () => {
     if (!d.name?.trim()) return setError("Name is required.");
@@ -194,6 +200,7 @@ function ItemEditor({ draft, cats, groups, onClose, onSaved }: { draft: Draft; c
       return setError(res.error.message);
     }
     const id = res.data.id;
+    if (draft.photo_url && draft.photo_url !== row.photo_url) await deletePublicImage(draft.photo_url);
     await s.from("menu_item_option_groups").delete().eq("item_id", id);
     if (d.groupIds.length) {
       const { error } = await s.from("menu_item_option_groups").insert(
@@ -215,13 +222,14 @@ function ItemEditor({ draft, cats, groups, onClose, onSaved }: { draft: Draft; c
       setBusy(false);
       return setError(error.message);
     }
+    await deletePublicImage(draft.photo_url);
     onSaved();
   };
 
   return (
     <Sheet
       open
-      onClose={onClose}
+      onClose={close}
       title={d.id ? "Edit item" : "New item"}
       footer={
         <div className="flex gap-2">
@@ -240,8 +248,9 @@ function ItemEditor({ draft, cats, groups, onClose, onSaved }: { draft: Draft; c
         {error && <Alert>{error}</Alert>}
         <div className="flex items-center gap-3">
           <ItemPhoto src={d.photo_url ?? null} alt="" className="h-24 w-24 shrink-0 rounded-2xl" />
+          <div className="flex flex-col items-start gap-2">
           <label className="btn-secondary btn-sm cursor-pointer">
-            {uploading ? <Spinner /> : d.photo_url ? "Change photo" : "Upload photo"}
+            {uploading ? <Spinner /> : d.photo_url ? "Change photo" : "Add photo"}
             <input
               type="file"
               accept="image/*"
@@ -251,14 +260,33 @@ function ItemEditor({ draft, cats, groups, onClose, onSaved }: { draft: Draft; c
                 if (!f) return;
                 setUploading(true);
                 try {
-                  set("photo_url", await uploadPublicImage(f, "items"));
+                  const url = await uploadPublicImage(f, "items");
+                  await deletePublicImage(unsavedUpload); // replaced an upload that was never saved
+                  set("photo_url", url);
                 } catch (err) {
                   setError((err as Error).message);
                 }
                 setUploading(false);
+                e.target.value = "";
               }}
             />
           </label>
+          {d.photo_url && (
+            <button
+              type="button"
+              className="btn-ghost btn-sm text-red-700"
+              disabled={uploading}
+              onClick={async () => {
+                if (!confirm("Remove this photo? Customers will see a plain placeholder until you add a new one.")) return;
+                await deletePublicImage(unsavedUpload);
+                set("photo_url", null);
+              }}
+            >
+              Remove photo
+            </button>
+          )}
+          <p className="text-xs text-coffee-600">Square photos look best. Big phone photos are shrunk automatically.</p>
+          </div>
         </div>
         <div>
           <label className="label" htmlFor="i-name">
@@ -325,5 +353,65 @@ function ItemEditor({ draft, cats, groups, onClose, onSaved }: { draft: Draft; c
         </div>
       </div>
     </Sheet>
+  );
+}
+
+/** Thumbnail in the menu list: tap to add or change the photo — uploads and saves immediately. */
+function PhotoButton({ item, onSaved, onError }: { item: MenuItem; onSaved: (url: string) => void; onError: (msg: string) => void }) {
+  const [busy, setBusy] = useState(false);
+  const pick = async (file: File | undefined) => {
+    if (!file) return;
+    setBusy(true);
+    try {
+      const url = await uploadPublicImage(file, "items");
+      const { error } = await getSupabase().from("menu_items").update({ photo_url: url }).eq("id", item.id);
+      if (error) {
+        await deletePublicImage(url);
+        throw new Error(error.message);
+      }
+      await deletePublicImage(item.photo_url); // replaced → remove the old file
+      onSaved(url);
+    } catch (e) {
+      onError((e as Error).message);
+    }
+    setBusy(false);
+  };
+  return (
+    <label
+      className="relative block h-14 w-14 shrink-0 cursor-pointer overflow-hidden rounded-xl focus-within:ring-2 focus-within:ring-coffee-500"
+      title={item.photo_url ? "Change photo" : "Add photo"}
+    >
+      {item.photo_url ? (
+        <>
+          <ItemPhoto src={item.photo_url} alt="" className="h-full w-full" />
+          <span className="absolute bottom-0.5 right-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-white/90 text-[11px] shadow" aria-hidden>
+            📷
+          </span>
+        </>
+      ) : (
+        <span className="flex h-full w-full flex-col items-center justify-center rounded-xl border-2 border-dashed border-coffee-300 bg-coffee-50 text-[11px] font-semibold leading-tight text-coffee-700">
+          <span className="text-base" aria-hidden>
+            +
+          </span>
+          Photo
+        </span>
+      )}
+      {busy && (
+        <span className="absolute inset-0 flex items-center justify-center bg-white/70">
+          <Spinner className="h-5 w-5 text-coffee-700" />
+        </span>
+      )}
+      <input
+        type="file"
+        accept="image/*"
+        className="sr-only"
+        aria-label={`${item.photo_url ? "Change" : "Add"} photo for ${item.name}`}
+        disabled={busy}
+        onChange={(e) => {
+          pick(e.target.files?.[0]);
+          e.target.value = "";
+        }}
+      />
+    </label>
   );
 }

@@ -19,7 +19,8 @@
     "test:native": "node tests/native-bridge.test.js",
     "test:branding": "node tests/branding.test.js",
     "test:payments": "tsx tests/payments-route.test.ts",
-    "test:payments:e2e": "node tests/payments-e2e.test.js"
+    "test:payments:e2e": "node tests/payments-e2e.test.js",
+    "test:photos": "node tests/photos.test.js"
   },
   "dependencies": {
     "@capacitor/android": "8.6.0",
