@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Runs the database scenario tests against the local Supabase stack (npm run db:start first).
+# It resets the DB, runs scenarios (which create test users/orders), then resets again.
+set -euo pipefail
+cd "$(dirname "$0")/../.."
+npx supabase db reset >/dev/null
+DB_URL="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
+if command -v psql >/dev/null; then
+  psql "$DB_URL" -v ON_ERROR_STOP=1 -q -f supabase/tests/scenarios.sql | grep -E "ok|FAIL|PASSED"
+else
+  docker exec -i supabase_db_pahuway-cafe psql -U postgres -v ON_ERROR_STOP=1 -q < supabase/tests/scenarios.sql | grep -E "ok|FAIL|PASSED"
+fi
+npx supabase db reset >/dev/null
+echo "Database reset to seed data. Re-run: npm run seed:users"
