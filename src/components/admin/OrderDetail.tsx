@@ -5,6 +5,8 @@ import { getSupabase } from "@/lib/supabase/client";
 import { formatPeso, ORDER_TYPE_LABEL, PAYMENT_STATUS_LABEL, STATUS_LABEL } from "@/lib/format";
 import { formatDateTime, formatTime } from "@/lib/hours";
 import type { Order, OrderStatus, Rider } from "@/lib/types";
+import { LeafletMap } from "@/components/map/LeafletMap";
+import { googleMapsPin, toLatLng } from "@/lib/maps";
 
 const REJECT_REASONS = ["Item not available", "Outside our delivery area", "GCash payment not received", "We're about to close", "Couldn't reach customer"];
 
@@ -55,6 +57,7 @@ export function OrderDetail({ order, riders, onClose }: { order: Order | null; r
 
   const needsVerify = o.payment_method === "gcash" && o.payment_status !== "paid";
   const active = !["completed", "cancelled"].includes(o.status);
+  const pin = toLatLng(o.delivery_lat, o.delivery_lng);
   const btn = (label: string, onClick: () => void, cls = "btn-primary", disabled = false) => (
     <button className={`${cls} w-full`} onClick={onClick} disabled={!!busy || disabled}>
       {busy === label ? <Spinner /> : label}
@@ -144,6 +147,16 @@ export function OrderDetail({ order, riders, onClose }: { order: Order | null; r
               <p className="font-semibold">{o.street}</p>
               {o.landmark && <p className="text-coffee-700">Landmark: {o.landmark}</p>}
               {o.rider_notes && <p className="mt-1 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">Note to rider: {o.rider_notes}</p>}
+              {pin ? (
+                <div className="mt-2 space-y-1">
+                  <LeafletMap key={o.id} value={pin} className="h-36 w-full" label="Customer's pinned location" />
+                  <a className="text-sm font-semibold text-coffee-700 underline" href={googleMapsPin(pin)} target="_blank" rel="noreferrer" data-testid="staff-pin-link">
+                    📍 Pinned location — open in Google Maps
+                  </a>
+                </div>
+              ) : (
+                <p className="mt-1 text-xs text-coffee-600">No map pin.</p>
+              )}
             </div>
             {active && (
               <div>

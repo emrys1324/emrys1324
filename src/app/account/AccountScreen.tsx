@@ -1,5 +1,7 @@
 "use client";
 import Link from "next/link";
+import { MapPicker } from "@/components/map/MapPicker";
+import { toLatLng } from "@/lib/maps";
 import { useCallback, useEffect, useState } from "react";
 import { StoreHeader } from "@/components/customer/Header";
 import { Alert, Badge, PageLoader, Spinner } from "@/components/ui";
@@ -18,6 +20,8 @@ interface Profile {
   zone_id: string | null;
   street: string | null;
   landmark: string | null;
+  saved_lat: number | null;
+  saved_lng: number | null;
 }
 
 export function AccountScreen() {
@@ -143,11 +147,11 @@ function Profile({ user }: { user: User }) {
   const load = useCallback(async () => {
     const supabase = getSupabase();
     const [p, z, o] = await Promise.all([
-      supabase.from("users").select("role, full_name, phone, zone_id, street, landmark").eq("id", user.id).single(),
+      supabase.from("users").select("role, full_name, phone, zone_id, street, landmark, saved_lat, saved_lng").eq("id", user.id).single(),
       supabase.from("delivery_zones").select("*").eq("is_active", true).order("sort_order"),
       supabase.from("orders").select("*").eq("customer_id", user.id).order("created_at", { ascending: false }).limit(20),
     ]);
-    setProfile((p.data as Profile) ?? { role: "customer", full_name: "", phone: "", zone_id: null, street: "", landmark: "" });
+    setProfile((p.data as Profile) ?? { role: "customer", full_name: "", phone: "", zone_id: null, street: "", landmark: "", saved_lat: null, saved_lng: null });
     setZones((z.data as Zone[]) ?? []);
     setOrders((o.data as Order[]) ?? []);
   }, [user.id]);
@@ -166,7 +170,7 @@ function Profile({ user }: { user: User }) {
     setSaving(true);
     const { error } = await getSupabase()
       .from("users")
-      .update({ full_name: profile.full_name, phone, zone_id: profile.zone_id || null, street: profile.street, landmark: profile.landmark })
+      .update({ full_name: profile.full_name, phone, zone_id: profile.zone_id || null, street: profile.street, landmark: profile.landmark, saved_lat: profile.saved_lat, saved_lng: profile.saved_lng })
       .eq("id", user.id);
     setSaving(false);
     setMsg(error ? { tone: "red", text: error.message } : { tone: "green", text: "Saved! We'll fill these in at checkout." });
@@ -240,6 +244,10 @@ function Profile({ user }: { user: User }) {
           </label>
           <input id="p-landmark" className="input" value={profile.landmark ?? ""} onChange={set("landmark")} />
         </div>
+        <MapPicker
+          value={toLatLng(profile.saved_lat, profile.saved_lng)}
+          onChange={(p) => setProfile({ ...profile, saved_lat: p?.lat ?? null, saved_lng: p?.lng ?? null })}
+        />
         <button className="btn-primary w-full" disabled={saving}>
           {saving ? <Spinner /> : "Save"}
         </button>

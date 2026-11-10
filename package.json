@@ -20,7 +20,8 @@
     "test:branding": "node tests/branding.test.js",
     "test:payments": "tsx tests/payments-route.test.ts",
     "test:payments:e2e": "node tests/payments-e2e.test.js",
-    "test:photos": "node tests/photos.test.js"
+    "test:photos": "node tests/photos.test.js",
+    "test:maps": "node tests/maps.test.js"
   },
   "dependencies": {
     "@capacitor/android": "8.6.0",
@@ -32,6 +33,7 @@
     "@capacitor/status-bar": "8.0.4",
     "@supabase/ssr": "0.12.7",
     "@supabase/supabase-js": "2.119.0",
+    "leaflet": "1.9.4",
     "next": "15.5.29",
     "react": "19.1.10",
     "react-dom": "19.1.10"
@@ -39,6 +41,7 @@
   "devDependencies": {
     "@capacitor/assets": "4.0.0",
     "@capacitor/cli": "8.6.0",
+    "@types/leaflet": "1.9.22",
     "@types/node": "^22.10.0",
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
