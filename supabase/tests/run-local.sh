@@ -14,4 +14,6 @@ RUN supabase/tests/scenarios.sql 2>&1 | grep -E "ok|FAIL|PASSED|ERROR"
 npx supabase db reset >/dev/null
 RUN supabase/tests/scenarios_mobile.sql 2>&1 | grep -E "ok|FAIL|PASSED|ERROR"
 npx supabase db reset >/dev/null
+RUN supabase/tests/scenarios_payments.sql 2>&1 | grep -E "ok|FAIL|PASSED|ERROR"
+npx supabase db reset >/dev/null
 echo "Database reset to seed data. Re-run: npm run seed:users"

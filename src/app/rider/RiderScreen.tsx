@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Logo } from "@/components/customer/Header";
 import { Alert, Badge, PageLoader, Spinner } from "@/components/ui";
-import { getSupabase } from "@/lib/supabase/client";
+import { getAuthedSupabase, getSupabase } from "@/lib/supabase/client";
 import { enableAccountPush, isNativeApp, signOutAndGo } from "@/lib/native";
 import { formatPeso, friendlyError, STATUS_LABEL } from "@/lib/format";
 import { formatTime, storeNow } from "@/lib/hours";
@@ -44,18 +44,29 @@ export function RiderScreen() {
 
   useEffect(() => {
     load();
+    let cancelled = false;
+    let ch: ReturnType<ReturnType<typeof getSupabase>["channel"]> | null = null;
     const supabase = getSupabase();
-    const ch = supabase
-      .channel("rider-orders")
-      .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, () => load())
-      .subscribe((s) => s === "SUBSCRIBED" && load());
+    // Join only once the rider's login is attached, or RLS hides their deliveries from realtime.
+    getAuthedSupabase().then((sb) => {
+      if (cancelled) return;
+      ch = sb
+        .channel("rider-orders")
+        .on("postgres_changes", { event: "*", schema: "public", table: "orders" }, () => load())
+        .subscribe((s) => s === "SUBSCRIBED" && load());
+    });
+    const { data: authSub } = supabase.auth.onAuthStateChange((_e, session) => {
+      if (session) supabase.realtime.setAuth(session.access_token);
+    });
     const onVis = () => document.visibilityState === "visible" && load();
     document.addEventListener("visibilitychange", onVis);
     const poll = setInterval(load, 60_000);
     return () => {
+      cancelled = true;
       clearInterval(poll);
       document.removeEventListener("visibilitychange", onVis);
-      supabase.removeChannel(ch);
+      authSub.subscription.unsubscribe();
+      if (ch) supabase.removeChannel(ch);
     };
   }, [load]);
 
@@ -141,7 +152,7 @@ export function RiderScreen() {
                   </a>
                 </div>
                 <div className="flex items-center justify-between rounded-2xl border-2 border-coffee-200 p-3">
-                  <span className="font-semibold">{collect ? "Collect cash" : "Paid via GCash"}</span>
+                  <span className="font-semibold">{collect ? "Collect cash" : o.payment_method === "online" ? "Paid online" : "Paid via GCash"}</span>
                   <span className={`text-2xl font-bold tabular-nums ${collect ? "" : "text-sage-700"}`}>{collect ? formatPeso(collect) : "₱0"}</span>
                 </div>
                 <p className="text-sm text-coffee-700">

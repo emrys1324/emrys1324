@@ -41,6 +41,18 @@ export function OrderDetail({ order, riders, onClose }: { order: Order | null; r
   };
   const setStatus = (s: OrderStatus, extra: Partial<Order> = {}) => update(s, { status: s, ...extra });
 
+  const refundLabel = `Refund ${formatPeso(o.total)} to customer`;
+  const refund = async () => {
+    if (!confirm(`Refund ${formatPeso(o.total)} for ${o.order_number} through PayMongo?`)) return;
+    setBusy(refundLabel);
+    setError(null);
+    const res = await fetch("/api/payments/refund", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ order_id: o.id }) });
+    const json = await res.json().catch(() => ({}));
+    setBusy(null);
+    if (!res.ok) setError(json.error ?? "Refund failed.");
+  };
+  const paidOnline = o.payment_method === "online" && o.payment_status === "paid";
+
   const needsVerify = o.payment_method === "gcash" && o.payment_status !== "paid";
   const active = !["completed", "cancelled"].includes(o.status);
   const btn = (label: string, onClick: () => void, cls = "btn-primary", disabled = false) => (
@@ -80,7 +92,7 @@ export function OrderDetail({ order, riders, onClose }: { order: Order | null; r
                     Back
                   </button>
                   {btn("Confirm", async () => {
-                    if (await setStatus("cancelled", { cancel_reason: reason.trim() })) onClose();
+                    if ((await setStatus("cancelled", { cancel_reason: reason.trim() })) && !paidOnline) onClose();
                   }, "btn-danger", reason.trim().length < 3)}
                 </div>
               </div>
@@ -193,7 +205,7 @@ export function OrderDetail({ order, riders, onClose }: { order: Order | null; r
 
         <div className="rounded-2xl bg-white p-4">
           <div className="flex items-center justify-between">
-            <p className="font-bold">{o.payment_method === "gcash" ? "GCash" : "Cash"}</p>
+            <p className="font-bold">{o.payment_method === "gcash" ? "GCash (manual)" : o.payment_method === "online" ? "Online · PayMongo" : "Cash"}</p>
             <Badge tone={o.payment_status === "paid" ? "green" : o.payment_status === "for_verification" ? "red" : "gray"}>{PAYMENT_STATUS_LABEL[o.payment_status]}</Badge>
           </div>
           {o.payment_method === "gcash" && (
@@ -220,6 +232,28 @@ export function OrderDetail({ order, riders, onClose }: { order: Order | null; r
               )}
             </div>
           )}
+          {o.payment_method === "online" && (
+            <div className="mt-3 space-y-2 text-sm">
+              {o.paid_at && <p className="text-coffee-700">Paid {formatDateTime(o.paid_at)} via GCash / QR Ph — no need to collect cash.</p>}
+              {o.paymongo_payment_id && (
+                <p className="text-coffee-600">
+                  PayMongo ref: <span className="font-mono">{o.paymongo_payment_id}</span>
+                </p>
+              )}
+              {o.payment_status === "refunded" && (
+                <p className="font-semibold text-coffee-700">
+                  Refunded{o.refunded_at ? ` ${formatDateTime(o.refunded_at)}` : ""}. The customer gets the money back in their GCash/bank account (timing depends on the method).
+                </p>
+              )}
+              {o.payment_status === "paid" && o.status === "cancelled" && (
+                <>
+                  <Alert tone="amber">This order is cancelled but was paid online. Refund the customer:</Alert>
+                  {btn(`Refund ${formatPeso(o.total)} to customer`, refund, "btn-danger")}
+                </>
+              )}
+              {o.payment_status === "paid" && o.status !== "cancelled" && <p className="text-coffee-600">To refund, cancel the order first.</p>}
+            </div>
+          )}
           {o.payment_method === "cash" && o.order_type === "delivery" && o.payment_status !== "paid" && (
             <p className="mt-1 text-sm text-coffee-700">Rider collects {formatPeso(o.total)}.</p>
           )}
@@ -227,6 +261,7 @@ export function OrderDetail({ order, riders, onClose }: { order: Order | null; r
 
         {o.status === "received" && needsVerify && <Alert tone="amber">GCash payment isn&apos;t verified yet. You can still accept and verify later.</Alert>}
         {o.cancel_reason && <Alert>Cancelled: {o.cancel_reason}</Alert>}
+        {!active && error && <Alert>{error}</Alert>}
       </div>
     </Sheet>
   );

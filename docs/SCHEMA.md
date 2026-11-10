@@ -35,7 +35,7 @@ delivery_zones 1─* orders ─1 (customer_id → users, rider_id → riders)
 ### Statuses
 `received → preparing → ready → out_for_delivery → completed`, or `cancelled` from any step. Pickup and dine-in skip `out_for_delivery`. A database check makes **cancelling require a reason**. A trigger stamps `accepted_at`, `ready_at`, `picked_up_at`, `completed_at` and `cancelled_at`, marks cash orders **paid** when completed, and prevents prices or the order number from being edited afterwards.
 
-Payment status: `unpaid` (cash) · `for_verification` (GCash screenshot uploaded) · `paid`.
+Payment status: `unpaid` (cash) · `for_verification` (manual GCash screenshot uploaded) · `awaiting_payment` (online, not paid yet — hidden from staff) · `paid` · `refunded`. Payment methods: `cash`, `gcash` (manual), `online` (PayMongo: GCash/QR Ph). See [PAYMENTS.md](PAYMENTS.md) for `mark_order_paid()` and the 30-minute auto-cancel job.
 
 ## Database functions (RPC)
 

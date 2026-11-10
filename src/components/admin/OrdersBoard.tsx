@@ -1,7 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Badge, PageLoader } from "@/components/ui";
-import { getSupabase } from "@/lib/supabase/client";
+import { getAuthedSupabase, getSupabase } from "@/lib/supabase/client";
 import { formatPeso, ORDER_TYPE_LABEL, timeAgo } from "@/lib/format";
 import { formatTime, storeNow } from "@/lib/hours";
 import { playChime, unlockAudio } from "@/lib/sound";
@@ -34,12 +34,28 @@ export function OrdersBoard() {
   soundRef.current = soundOn;
   const [, tick] = useState(0);
 
+  const knownIds = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    knownIds.current = new Set((orders ?? []).map((o) => o.id));
+  }, [orders]);
+
+  const addNewOrder = useCallback(async (id: string, alert: boolean) => {
+    const { data } = await getSupabase().from("orders").select("*, order_items(*)").eq("id", id).single();
+    if (!data || (data as Order).payment_status === "awaiting_payment") return;
+    setOrders((prev) => (prev ? [...prev.filter((o) => o.id !== id), data as Order] : [data as Order]));
+    if (!alert) return;
+    setFresh((s) => new Set(s).add(id));
+    setTimeout(() => setFresh((s) => { const n = new Set(s); n.delete(id); return n; }), 8000);
+    if (soundRef.current) playChime();
+  }, []);
+
   const load = useCallback(async () => {
     const supabase = getSupabase();
     const { data, error } = await supabase
       .from("orders")
       .select("*, order_items(*)")
       .or(`status.in.(received,preparing,ready,out_for_delivery),created_at.gte.${startOfStoreDay()}`)
+      .neq("payment_status", "awaiting_payment") // unpaid online checkouts stay hidden until paid
       .order("created_at", { ascending: true });
     if (error) return setError(error.message);
     setError(null);
@@ -48,6 +64,8 @@ export function OrdersBoard() {
 
   useEffect(() => {
     load();
+    let cancelled = false;
+    let ch: ReturnType<ReturnType<typeof getSupabase>["channel"]> | null = null;
     const supabase = getSupabase();
     supabase
       .from("riders")
@@ -56,34 +74,50 @@ export function OrdersBoard() {
       .order("name")
       .then(({ data }) => setRiders((data as Rider[]) ?? []));
 
-    const ch = supabase
-      .channel("admin-orders")
-      .on("postgres_changes", { event: "INSERT", schema: "public", table: "orders" }, async (p) => {
-        const id = (p.new as Order).id;
-        const { data } = await supabase.from("orders").select("*, order_items(*)").eq("id", id).single();
-        if (data) setOrders((prev) => (prev ? [...prev.filter((o) => o.id !== id), data as Order] : [data as Order]));
-        setFresh((s) => new Set(s).add(id));
-        setTimeout(() => setFresh((s) => { const n = new Set(s); n.delete(id); return n; }), 8000);
-        if (soundRef.current) playChime();
-      })
-      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "orders" }, (p) => {
-        const row = p.new as Order;
-        setOrders((prev) => prev?.map((o) => (o.id === row.id ? { ...o, ...row, order_items: o.order_items } : o)) ?? prev);
-      })
-      .subscribe((status) => {
-        setLive(status === "SUBSCRIBED");
-        if (status === "SUBSCRIBED") load(); // catch anything missed while reconnecting
-      });
+    // Join the realtime channel only once it carries the staff login — joining as
+    // anonymous would make row-level security drop every order event.
+    getAuthedSupabase().then((sb) => {
+      if (cancelled) return;
+      ch = sb
+        .channel("admin-orders")
+        .on("postgres_changes", { event: "INSERT", schema: "public", table: "orders" }, async (p) => {
+          const row = p.new as Order;
+          if (row.payment_status === "awaiting_payment") return; // wait for the payment
+          await addNewOrder(row.id, true);
+        })
+        .on("postgres_changes", { event: "UPDATE", schema: "public", table: "orders" }, async (p) => {
+          const row = p.new as Order;
+          if (row.payment_status === "awaiting_payment") return;
+          const known = knownIds.current.has(row.id);
+          if (!known) {
+            if (row.payment_method !== "online") return; // only online payments make an order newly visible
+            // an online order just got paid (or a late payment on a cancelled one) → show it now
+            await addNewOrder(row.id, row.status !== "cancelled");
+            return;
+          }
+          setOrders((prev) => prev?.map((o) => (o.id === row.id ? { ...o, ...row, order_items: o.order_items } : o)) ?? prev);
+        })
+        .subscribe((status) => {
+          setLive(status === "SUBSCRIBED");
+          if (status === "SUBSCRIBED") load(); // catch anything missed while reconnecting
+        });
+    });
+    // keep the realtime token fresh through long shifts
+    const { data: authSub } = supabase.auth.onAuthStateChange((_e, session) => {
+      if (session) supabase.realtime.setAuth(session.access_token);
+    });
 
     const onVis = () => document.visibilityState === "visible" && load();
     document.addEventListener("visibilitychange", onVis);
     const t = setInterval(() => tick((n) => n + 1), 30_000);
     return () => {
+      cancelled = true;
       clearInterval(t);
       document.removeEventListener("visibilitychange", onVis);
-      supabase.removeChannel(ch);
+      authSub.subscription.unsubscribe();
+      if (ch) supabase.removeChannel(ch);
     };
-  }, [load]);
+  }, [load, addNewOrder]);
 
   const newCount = orders?.filter((o) => o.status === "received").length ?? 0;
 
@@ -203,6 +237,12 @@ function OrderCard({ order: o, fresh, riders, onOpen }: { order: Order; fresh?: 
         <Badge tone={o.order_type === "delivery" ? "blue" : o.order_type === "dine_in" ? "brown" : "gray"}>{ORDER_TYPE_LABEL[o.order_type]}</Badge>
         {o.scheduled_for ? <Badge tone="amber">⏰ {formatTime(o.scheduled_for)}</Badge> : <Badge tone="gray">ASAP</Badge>}
         {o.payment_method === "gcash" && <Badge tone={o.payment_status === "paid" ? "green" : "red"}>{o.payment_status === "paid" ? "GCash ✓" : "GCash – verify"}</Badge>}
+        {o.payment_method === "online" &&
+          (o.status === "cancelled" && o.payment_status === "paid" ? (
+            <Badge tone="red">Refund needed</Badge>
+          ) : (
+            <Badge tone={o.payment_status === "refunded" ? "gray" : "green"}>{o.payment_status === "refunded" ? "Refunded" : "Paid online ✓"}</Badge>
+          ))}
         {o.status === "cancelled" && <Badge tone="red">Cancelled</Badge>}
         {o.order_type === "delivery" && o.status !== "cancelled" && o.status !== "completed" && (
           <Badge tone={rider ? "green" : "amber"}>{rider ? `🛵 ${rider.name.split(" ")[0]}` : "No rider"}</Badge>

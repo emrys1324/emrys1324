@@ -52,6 +52,7 @@ export function SettingsAdmin() {
         logo_url: s.logo_url || null,
         background_url: s.background_url || null,
         background_fade: Math.min(95, Math.max(40, Number(s.background_fade) || 85)),
+        online_payments_enabled: !!s.online_payments_enabled,
       })
       .eq("id", 1);
     setBusy(false);
@@ -126,8 +127,10 @@ export function SettingsAdmin() {
           </div>
         </section>
 
+        <OnlinePaymentsSection enabled={!!s.online_payments_enabled} onChange={(v) => set("online_payments_enabled", v)} />
+
         <section className="card space-y-4 p-5">
-          <h2 className="section-title">GCash</h2>
+          <h2 className="section-title">{s.online_payments_enabled ? "Manual GCash (fallback)" : "GCash"}</h2>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
             <div className="flex h-40 w-40 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-coffee-200 bg-white">
               {s.gcash_qr_url ? (
@@ -521,5 +524,39 @@ function HeaderSettings({ s, set, logo }: { s: StoreSettings; set: SetFn; logo: 
         <ColorField id="staff-color" label="Staff header colour" value={s.staff_header_color} fallback={DEFAULT_STAFF_HEADER} onChange={(v) => set("staff_header_color", v)} />
       </div>
     </div>
+  );
+}
+
+function OnlinePaymentsSection({ enabled, onChange }: { enabled: boolean; onChange: (v: boolean) => void }) {
+  const [status, setStatus] = useState<{ configured: boolean; testMode: boolean; methods: string[] } | null>(null);
+  useEffect(() => {
+    fetch("/api/payments/status")
+      .then((r) => r.json())
+      .then(setStatus)
+      .catch(() => setStatus({ configured: false, testMode: false, methods: [] }));
+  }, []);
+  const ready = !!status?.configured;
+  return (
+    <section className="card space-y-3 p-5" aria-labelledby="online-pay-title">
+      <label className="flex items-center justify-between gap-3">
+        <span>
+          <span id="online-pay-title" className="block font-bold">
+            Online payments (PayMongo)
+          </span>
+          <span className="text-sm text-coffee-700">Customers pay with GCash or QR Ph at checkout. Orders reach the board only after payment is confirmed.</span>
+        </span>
+        <Toggle checked={enabled && ready} onChange={onChange} disabled={!ready} label="Accept online payments" />
+      </label>
+      {status && !ready && (
+        <p className="rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-900" data-testid="paymongo-not-configured">
+          Not set up yet: add your PayMongo keys to the website&apos;s server settings first (see docs/PAYMENTS.md). Until then customers can pay cash or manual GCash.
+        </p>
+      )}
+      {ready && status?.testMode && (
+        <p className="rounded-2xl bg-sky-100 px-4 py-3 text-sm text-sky-900">
+          <strong>Test mode:</strong> PayMongo test keys are installed, so no real money moves. Switch to live keys before opening to customers.
+        </p>
+      )}
+    </section>
   );
 }

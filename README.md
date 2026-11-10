@@ -8,6 +8,8 @@ A lean, mobile-first ordering app for **Pahuway Cafe** (San Agustin, Romblon). C
 
 More screenshots are in [`docs/screenshots/`](docs/screenshots).
 
+**Online payments:** GCash and QR Ph via PayMongo, alongside cash and manual GCash — see [docs/PAYMENTS.md](docs/PAYMENTS.md).
+
 **Mobile app:** the same app ships as **Isla** for Android and iPhone (Capacitor), with push notifications. See [docs/MOBILE.md](docs/MOBILE.md) for the store release steps.
 
 ---
@@ -62,6 +64,7 @@ npm run db:start
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `ANON_KEY`, or Settings → API → anon public | browser + server |
 | `SUPABASE_SERVICE_ROLE_KEY` | `SERVICE_ROLE_KEY`, or Settings → API → service_role | **server only**: "Add rider" button + seed script. Never expose it. |
 | `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` / `SEED_RIDER_EMAIL` / `SEED_RIDER_PASSWORD` | your choice (optional) | `npm run seed:users` |
+| `PAYMONGO_SECRET_KEY`, `PAYMONGO_WEBHOOK_SECRET`, `NEXT_PUBLIC_SITE_URL` | see [docs/PAYMENTS.md](docs/PAYMENTS.md) | **server only**: online payments (optional) |
 | `PUSH_WEBHOOK_SECRET`, `FIREBASE_SERVICE_ACCOUNT`, `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_PRIVATE_KEY`, `APNS_BUNDLE_ID` | see [docs/MOBILE.md](docs/MOBILE.md) | **server only**: push notifications for the Isla app (optional) |
 
 Then create the starter logins and run the app:
@@ -107,10 +110,12 @@ Open http://localhost:3000. Staff and riders sign in at http://localhost:3000/lo
 |---|---|---|
 | Type check | `npm run typecheck` | |
 | Production build | `npm run build` | |
-| Database rules (46 checks) | `npm run test:db` | Needs `npm run db:start`. Checks prices, validation, sold-out, closed store, minimum order, RLS (guest / customer / rider / admin), role escalation, rider actions, realtime broadcasts and the summary. Resets the local DB afterwards. |
+| Database rules (66 checks) | `npm run test:db` | Needs `npm run db:start`. Checks prices, validation, sold-out, closed store, minimum order, RLS (guest / customer / rider / admin), role escalation, rider actions, realtime broadcasts and the summary. Resets the local DB afterwards. |
 | Database rules without Docker | see `supabase/tests/supabase_stubs.sql` | Runs the same scenarios on plain Postgres with stand-ins for Supabase's schemas. |
 | Push sender (Firebase + APNs mocked, 12 checks) | `npm run test:push` | Needs local Supabase + `seed:users`. |
 | App-mode behaviour (13 checks) | `npm run test:native` | Runs the site with Capacitor's real Android bridge and a fake native side: push registration, Notify me, no-Firebase safety. Needs the app on :3000. |
+| Online payments: routes (20 checks) | `npm run test:payments` | Checkout session, signature verification, amounts, idempotency vs. a mock PayMongo. |
+| Online payments: browser flow (12 checks) | `npm run test:payments:e2e` | Pay online → board shows order only when paid → refund → resume abandoned checkout. See docs/PAYMENTS.md for the env to start the app with. |
 | Branding (21 checks) | `npm run test:branding` | Logo, background, store name, staff title and header colours: live updates, measured text contrast, staff screens stay plain, reset to defaults. |
 | End-to-end acceptance test | `npm run test:e2e` | Needs local Supabase + `seed:users` + the app on :3000, plus Playwright (`npm i -D playwright && npx playwright install chromium`). Drives a customer phone, staff tablet and rider phone at once and re-creates the screenshots. |
 

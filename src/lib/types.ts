@@ -1,7 +1,7 @@
 export type OrderType = "pickup" | "delivery" | "dine_in";
 export type OrderStatus = "received" | "preparing" | "ready" | "out_for_delivery" | "completed" | "cancelled";
-export type PaymentMethod = "cash" | "gcash";
-export type PaymentStatus = "unpaid" | "for_verification" | "paid";
+export type PaymentMethod = "cash" | "gcash" | "online";
+export type PaymentStatus = "unpaid" | "for_verification" | "paid" | "awaiting_payment" | "refunded";
 
 export interface StoreSettings {
   id: number;
@@ -24,6 +24,7 @@ export interface StoreSettings {
   header_color: string | null;
   staff_header_color: string | null;
   staff_title: string;
+  online_payments_enabled: boolean;
 }
 
 export interface Category {
@@ -121,6 +122,13 @@ export interface Order {
   payment_status: PaymentStatus;
   gcash_reference: string | null;
   payment_proof_path: string | null;
+  paymongo_checkout_id?: string | null;
+  paymongo_payment_id?: string | null;
+  paymongo_refund_id?: string | null;
+  checkout_url?: string | null;
+  payment_expires_at?: string | null;
+  paid_at?: string | null;
+  refunded_at?: string | null;
   rider_id: string | null;
   cancel_reason: string | null;
   created_at: string;

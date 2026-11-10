@@ -120,6 +120,7 @@ export function CheckoutScreen() {
   }, [menu, lines]);
 
   if (!ready || !settings) return <PageLoader />;
+  if (payment === "online" && !settings.online_payments_enabled) setTimeout(() => setPayment("cash"), 0);
 
   if (lines.length === 0 && !done) {
     return (
@@ -204,6 +205,15 @@ export function CheckoutScreen() {
       saveRecentOrder({ token: data.token, order_number: data.order_number, created_at: new Date().toISOString() });
       setDone(true);
       clear();
+      if (payment === "online") {
+        // Hand over to PayMongo's secure page; if that fails, the status page offers "Pay now" again.
+        const res = await fetch("/api/payments/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: data.token }) });
+        const json = await res.json().catch(() => ({}));
+        if (res.ok && json.url) {
+          window.location.href = json.url;
+          return;
+        }
+      }
       router.replace(`/order/${data.token}?new=1`);
     } catch (err) {
       setSubmitError(friendlyError((err as Error).message));
@@ -369,12 +379,17 @@ export function CheckoutScreen() {
         {/* 3 · Payment */}
         <section className="card space-y-4 p-5">
           <h2 className="section-title">Payment</h2>
-          <div className="grid gap-2 sm:grid-cols-2" role="radiogroup" aria-label="Payment method">
+          <div className={`grid gap-2 ${settings.online_payments_enabled ? "sm:grid-cols-3" : "sm:grid-cols-2"}`} role="radiogroup" aria-label="Payment method">
             {(
               [
-                { v: "cash", title: cashLabel, sub: "Pay when you get your order" },
-                { v: "gcash", title: "GCash", sub: "Send now, upload the receipt" },
-              ] as const
+                ...(settings.online_payments_enabled ? [{ v: "online", title: "Pay online", sub: "GCash or QR Ph · confirmed instantly" } as const] : []),
+                { v: "cash", title: cashLabel, sub: "Pay when you get your order" } as const,
+                {
+                  v: "gcash",
+                  title: settings.online_payments_enabled ? "GCash (send manually)" : "GCash",
+                  sub: "Send to our number, upload the receipt",
+                } as const,
+              ]
             ).map((p) => (
               <button
                 type="button"
@@ -389,6 +404,13 @@ export function CheckoutScreen() {
               </button>
             ))}
           </div>
+
+          {payment === "online" && (
+            <div className="rounded-2xl bg-sage-100 p-4 text-sm text-sage-700" data-testid="online-pay-info">
+              <p className="font-bold">You&apos;ll pay {formatPeso(total)} on PayMongo&apos;s secure page.</p>
+              <p>Choose GCash or QR Ph (scan with any bank or e-wallet app). Your order goes to our baristas as soon as the payment is confirmed. Please pay within 30 minutes.</p>
+            </div>
+          )}
 
           {payment === "gcash" && (
             <div className="space-y-4 rounded-2xl bg-cream-100 p-4">
@@ -477,7 +499,7 @@ export function CheckoutScreen() {
               ) : !open ? (
                 "Ordering is closed"
               ) : (
-                <>Place order · {formatPeso(total)}</>
+                <>{payment === "online" ? "Continue to payment" : "Place order"} · {formatPeso(total)}</>
               )}
             </button>
           </div>
