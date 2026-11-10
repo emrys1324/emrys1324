@@ -10,17 +10,20 @@ export function Logo({ small = false }: { small?: boolean }) {
   const { settings } = useStoreSettings();
   const name = settings?.store_name?.trim() || "Pahuway Cafe";
   return (
-    <Link href="/" className="flex items-center gap-2.5" aria-label={`${name} home`}>
+    <Link href="/" className="flex min-w-0 items-center gap-2.5" aria-label={`${name} home`}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src={logo} alt="" className={`${small ? "h-9 w-9" : "h-11 w-11"} shrink-0 rounded-full object-cover`} />
-      <span className="leading-tight">
+      <span className="min-w-0 leading-tight">
+        {/* Long names wrap onto up to two lines on phones instead of being cut off */}
         <span
           data-testid="store-title"
-          className={`block max-w-[11rem] truncate whitespace-nowrap font-display font-bold text-[color:var(--hfg,#2e1e14)] sm:max-w-none ${small ? "text-lg" : "text-xl"}`}
+          className={`line-clamp-2 break-words font-display font-bold leading-tight text-[color:var(--hfg,#2e1e14)] ${
+            small ? "text-base sm:text-lg" : "text-base min-[400px]:text-lg sm:text-xl"
+          }`}
         >
           {name}
         </span>
-        {!small && <span className="hidden whitespace-nowrap text-xs font-medium text-[color:var(--hmuted,#714a2f)] min-[400px]:block">San Agustin, Romblon</span>}
+        {!small && <span className="hidden whitespace-nowrap text-xs font-medium text-[color:var(--hmuted,#714a2f)] sm:block">San Agustin, Romblon</span>}
       </span>
     </Link>
   );
@@ -39,7 +42,7 @@ export function StoreHeader({ settings, open, back }: { settings: StoreSettings 
   return (
     <header data-testid="customer-header" className={`sticky top-0 z-30 border-b pt-[env(safe-area-inset-top)] ${hs.className}`} style={hs.style}>
       <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3">
-        <div className="flex items-center gap-1">
+        <div className="flex min-w-0 flex-1 items-center gap-1">
           {back && (
             <Link href={back} className="btn-ghost btn-sm -ml-2 h-10 w-10 !px-0 text-xl !text-[color:var(--hfg,#5a3a25)] hover:!bg-[color:var(--hhover,#efe4d8)]" aria-label="Back">
               ←
@@ -47,7 +50,7 @@ export function StoreHeader({ settings, open, back }: { settings: StoreSettings 
           )}
           <Logo small={!!back} />
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           {settings && (
             <span
               className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold ${open ? "bg-sage-100 text-sage-700" : "bg-stone-200 text-stone-800"}`}
