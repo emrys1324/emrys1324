@@ -2,12 +2,14 @@
 import Link from "next/link";
 import { formatClock } from "@/lib/hours";
 import type { StoreSettings } from "@/lib/types";
+import { useLogo } from "@/lib/store-settings";
 
 export function Logo({ small = false }: { small?: boolean }) {
+  const logo = useLogo();
   return (
     <Link href="/" className="flex items-center gap-2.5" aria-label="Pahuway Cafe home">
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src="/logo.svg" alt="" className={small ? "h-9 w-9" : "h-11 w-11"} />
+      <img src={logo} alt="" className={`${small ? "h-9 w-9" : "h-11 w-11"} shrink-0 rounded-full object-cover`} />
       <span className="leading-tight">
         <span className={`block whitespace-nowrap font-display font-bold text-coffee-900 ${small ? "text-lg" : "text-xl"}`}>Pahuway Cafe</span>
         {!small && <span className="hidden whitespace-nowrap text-xs font-medium text-coffee-600 min-[400px]:block">San Agustin, Romblon</span>}
@@ -18,7 +20,7 @@ export function Logo({ small = false }: { small?: boolean }) {
 
 export function StoreHeader({ settings, open, back }: { settings: StoreSettings | null; open: boolean; back?: string }) {
   return (
-    <header className="sticky top-0 z-30 border-b border-coffee-100 bg-cream/95 backdrop-blur">
+    <header className="sticky top-0 z-30 border-b border-coffee-100 bg-cream/95 pt-[env(safe-area-inset-top)] backdrop-blur">
       <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3">
         <div className="flex items-center gap-1">
           {back && (

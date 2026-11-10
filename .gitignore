@@ -7,3 +7,14 @@ out
 *.tsbuildinfo
 next-env.d.ts
 .DS_Store
+
+# Mobile app secrets & build output (never commit)
+*.jks
+*.keystore
+*.p8
+*.p12
+*.mobileprovision
+google-services.json
+GoogleService-Info.plist
+ios/App/build/
+ios/DerivedData/

@@ -1,0 +1,101 @@
+# Builds the Isla Android app.
+#  • Manual run (Actions → "Android app" → Run workflow) or push a tag like v1.0.0
+#  • Without secrets: builds a debug APK you can install on a phone for testing
+#  • With secrets: builds a signed AAB (upload this to Google Play) + signed APK
+#  • Optional: publishes the AAB to a Google Play testing track
+name: Android app
+
+on:
+  pull_request:
+    paths: ["android/**", "capacitor.config.ts", "package.json", ".github/workflows/android.yml"]
+  workflow_dispatch:
+    inputs:
+      version_name:
+        description: "Version shown in the store (e.g. 1.0.0)"
+        default: "1.0.0"
+        required: true
+      play_track:
+        description: "Publish to Google Play track (none = just build)"
+        type: choice
+        options: [none, internal, alpha, beta, production]
+        default: none
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+# "shell: bash" makes every step run with -eo pipefail, so a failing command
+# piped into `tail` still fails the job.
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      ISLA_VERSION_CODE: ${{ github.run_number }}
+      ISLA_VERSION_NAME: ${{ github.event.inputs.version_name || (startsWith(github.ref, 'refs/tags/v') && github.ref_name) || '0.0.0-dev' }}
+      HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+      HAS_FIREBASE: ${{ secrets.GOOGLE_SERVICES_JSON != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+
+      - run: npm ci
+      - run: npx cap sync android
+
+      - name: Add Firebase config (enables push notifications)
+        if: env.HAS_FIREBASE == 'true'
+        run: echo "${{ secrets.GOOGLE_SERVICES_JSON }}" | base64 -d > android/app/google-services.json
+      - name: Warn when push is not configured
+        if: env.HAS_FIREBASE != 'true'
+        run: echo "::warning::GOOGLE_SERVICES_JSON secret not set — this build will run without push notifications."
+
+      - name: Prepare upload key
+        if: env.HAS_KEYSTORE == 'true'
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "$RUNNER_TEMP/upload.jks"
+          echo "ISLA_KEYSTORE_PATH=$RUNNER_TEMP/upload.jks" >> "$GITHUB_ENV"
+          echo "ISLA_KEYSTORE_PASSWORD=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}" >> "$GITHUB_ENV"
+          echo "ISLA_KEY_ALIAS=${{ secrets.ANDROID_KEY_ALIAS }}" >> "$GITHUB_ENV"
+          echo "ISLA_KEY_PASSWORD=${{ secrets.ANDROID_KEY_PASSWORD }}" >> "$GITHUB_ENV"
+
+      - name: Build signed release (AAB + APK)
+        if: env.HAS_KEYSTORE == 'true'
+        working-directory: android
+        run: ./gradlew bundleRelease assembleRelease --no-daemon
+
+      - name: Build debug APK (no signing key configured)
+        if: env.HAS_KEYSTORE != 'true'
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: isla-android-${{ env.ISLA_VERSION_NAME }}-${{ github.run_number }}
+          path: |
+            android/app/build/outputs/bundle/release/*.aab
+            android/app/build/outputs/apk/release/*.apk
+            android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+      - name: Publish to Google Play
+        if: env.HAS_KEYSTORE == 'true' && github.event.inputs.play_track != '' && github.event.inputs.play_track != 'none'
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: cafe.pahuway.isla
+          releaseFiles: android/app/build/outputs/bundle/release/app-release.aab
+          track: ${{ github.event.inputs.play_track }}
+          status: ${{ github.event.inputs.play_track == 'production' && 'draft' || 'completed' }}

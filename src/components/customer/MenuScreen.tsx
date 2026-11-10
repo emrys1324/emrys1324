@@ -79,7 +79,7 @@ export function MenuScreen() {
 
         {data && (
           <>
-            <nav className="no-scrollbar sticky top-[65px] z-20 -mx-4 flex gap-2 overflow-x-auto bg-cream/95 px-4 py-3 backdrop-blur" aria-label="Menu categories">
+            <nav className="no-scrollbar sticky top-[calc(65px+env(safe-area-inset-top))] z-20 -mx-4 flex gap-2 overflow-x-auto bg-cream/95 px-4 py-3 backdrop-blur" aria-label="Menu categories">
               {sections.map((c) => (
                 <a key={c.id} href={`#cat-${c.id}`} className="chip border-coffee-200 bg-white text-coffee-800 hover:border-coffee-500">
                   {c.name}

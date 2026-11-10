@@ -6,9 +6,12 @@ cd "$(dirname "$0")/../.."
 npx supabase db reset >/dev/null
 DB_URL="postgresql://postgres:postgres@127.0.0.1:54322/postgres"
 if command -v psql >/dev/null; then
-  psql "$DB_URL" -v ON_ERROR_STOP=1 -q -f supabase/tests/scenarios.sql | grep -E "ok|FAIL|PASSED"
+  RUN() { psql "$DB_URL" -v ON_ERROR_STOP=1 -q -f "$1"; }
 else
-  docker exec -i supabase_db_pahuway-cafe psql -U postgres -v ON_ERROR_STOP=1 -q < supabase/tests/scenarios.sql | grep -E "ok|FAIL|PASSED"
+  RUN() { docker exec -i supabase_db_pahuway-cafe psql -U postgres -v ON_ERROR_STOP=1 -q < "$1"; }
 fi
+RUN supabase/tests/scenarios.sql 2>&1 | grep -E "ok|FAIL|PASSED|ERROR"
+npx supabase db reset >/dev/null
+RUN supabase/tests/scenarios_mobile.sql 2>&1 | grep -E "ok|FAIL|PASSED|ERROR"
 npx supabase db reset >/dev/null
 echo "Database reset to seed data. Re-run: npm run seed:users"

@@ -3,9 +3,12 @@ import { useCallback, useEffect, useState } from "react";
 import { Alert, PageLoader, Spinner, Toggle } from "@/components/ui";
 import { getSupabase } from "@/lib/supabase/client";
 import { uploadPublicImage } from "@/lib/upload";
+import { DEFAULT_LOGO, useStoreSettings } from "@/lib/store-settings";
+import { BackgroundLayer } from "@/components/BrandBackground";
 import type { Rider, StoreSettings } from "@/lib/types";
 
 export function SettingsAdmin() {
+  const { setLocal } = useStoreSettings();
   const [s, setS] = useState<StoreSettings | null>(null);
   const [msg, setMsg] = useState<{ tone: "red" | "green"; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -40,9 +43,15 @@ export function SettingsAdmin() {
         gcash_name: s.gcash_name,
         gcash_number: s.gcash_number,
         gcash_qr_url: s.gcash_qr_url,
+        contact_phone: s.contact_phone || null,
+        contact_email: s.contact_email || null,
+        logo_url: s.logo_url || null,
+        background_url: s.background_url || null,
+        background_fade: Math.min(95, Math.max(40, Number(s.background_fade) || 85)),
       })
       .eq("id", 1);
     setBusy(false);
+    if (!error) setLocal(s); // update header/logo here immediately; other screens update via realtime
     setMsg(error ? { tone: "red", text: error.message } : { tone: "green", text: "Settings saved." });
   };
 
@@ -51,6 +60,8 @@ export function SettingsAdmin() {
       <h1 className="font-display text-2xl font-bold">Store settings</h1>
       <form onSubmit={save} className="space-y-4">
         {msg && <Alert tone={msg.tone}>{msg.text}</Alert>}
+
+        <BrandingSection s={s} set={set} setMsg={setMsg} uploading={uploading} setUploading={setUploading} />
 
         <section className="card space-y-4 p-5">
           <label className="flex items-center justify-between gap-3">
@@ -74,6 +85,21 @@ export function SettingsAdmin() {
               <input id="close" type="time" className="input" value={s.close_time.slice(0, 5)} onChange={(e) => set("close_time", e.target.value)} />
             </div>
           </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label" htmlFor="c-phone">
+                Café mobile (public)
+              </label>
+              <input id="c-phone" className="input" inputMode="numeric" value={s.contact_phone ?? ""} onChange={(e) => set("contact_phone", e.target.value)} />
+            </div>
+            <div>
+              <label className="label" htmlFor="c-email">
+                Café email (public)
+              </label>
+              <input id="c-email" type="email" className="input" value={s.contact_email ?? ""} onChange={(e) => set("contact_email", e.target.value)} />
+            </div>
+          </div>
+          <p className="hint -mt-2">Shown on the privacy policy page, which the app stores require.</p>
           <div>
             <label className="label" htmlFor="closed-msg">
               Message when closed
@@ -219,6 +245,149 @@ function RidersSection() {
           {busy ? <Spinner /> : "Create rider login"}
         </button>
       </form>
+    </section>
+  );
+}
+
+type SetFn = <K extends keyof StoreSettings>(k: K, v: StoreSettings[K]) => void;
+
+/** Reads an image file and returns its pixel size (for friendly warnings). */
+function imageSize(file: File): Promise<{ w: number; h: number } | null> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      resolve({ w: img.naturalWidth, h: img.naturalHeight });
+      URL.revokeObjectURL(url);
+    };
+    img.onerror = () => {
+      resolve(null);
+      URL.revokeObjectURL(url);
+    };
+    img.src = url;
+  });
+}
+
+function BrandingSection({
+  s,
+  set,
+  setMsg,
+  uploading,
+  setUploading,
+}: {
+  s: StoreSettings;
+  set: SetFn;
+  setMsg: (m: { tone: "red" | "green"; text: string } | null) => void;
+  uploading: boolean;
+  setUploading: (v: boolean) => void;
+}) {
+  const upload = async (file: File | undefined, kind: "logo" | "background") => {
+    if (!file) return;
+    setUploading(true);
+    setMsg(null);
+    try {
+      const size = await imageSize(file);
+      if (!size) throw new Error("That file doesn't look like an image. Please use JPG, PNG or WebP.");
+      if (kind === "logo" && Math.min(size.w, size.h) < 128) throw new Error("Logo is too small — please use at least 256 × 256 pixels.");
+      if (kind === "background" && Math.max(size.w, size.h) < 1000) throw new Error("Background is too small — please use at least 1600 pixels wide so it stays sharp.");
+      const url = await uploadPublicImage(file, "branding");
+      set(kind === "logo" ? "logo_url" : "background_url", url);
+      const squareNote = kind === "logo" && Math.abs(size.w - size.h) > Math.min(size.w, size.h) * 0.1 ? " Tip: a square logo looks best — it's shown in a circle." : "";
+      setMsg({ tone: "green", text: `${kind === "logo" ? "Logo" : "Background"} uploaded — press Save settings to publish it.${squareNote}` });
+    } catch (err) {
+      setMsg({ tone: "red", text: (err as Error).message });
+    }
+    setUploading(false);
+  };
+
+  const logo = s.logo_url || DEFAULT_LOGO;
+  const fade = s.background_fade ?? 85;
+
+  return (
+    <section className="card space-y-5 p-5" aria-labelledby="branding-title">
+      <div>
+        <h2 id="branding-title" className="section-title">
+          Branding
+        </h2>
+        <p className="text-sm text-coffee-700">Your logo and background appear on the website and inside the Isla app as soon as you save.</p>
+      </div>
+
+      {/* Logo */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={logo} alt="Current logo" className="h-24 w-24 shrink-0 rounded-full border border-coffee-200 bg-white object-cover" data-testid="logo-preview" />
+        <div className="flex-1 space-y-2">
+          <p className="font-bold">Logo</p>
+          <div className="flex flex-wrap gap-2">
+            <label className="btn-secondary btn-sm cursor-pointer">
+              {uploading ? <Spinner /> : s.logo_url ? "Change logo" : "Upload logo"}
+              <input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" aria-label="Upload logo" onChange={(e) => upload(e.target.files?.[0], "logo")} />
+            </label>
+            {s.logo_url && (
+              <button type="button" className="btn-ghost btn-sm" onClick={() => set("logo_url", null)}>
+                Use default logo
+              </button>
+            )}
+          </div>
+          <p className="hint">Square image, at least 256 × 256 px (PNG with a transparent or solid background works best). Max 5 MB.</p>
+        </div>
+      </div>
+
+      {/* Background */}
+      <div className="space-y-3">
+        <p className="font-bold">Background image</p>
+        <div className="relative isolate h-44 overflow-hidden rounded-2xl border border-coffee-200 bg-cream" data-testid="background-preview">
+          {s.background_url ? (
+            <BackgroundLayer url={s.background_url} fade={fade} fixed={false} />
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center text-sm text-coffee-600">No background — plain cream</div>
+          )}
+          {/* sample content so you can judge readability */}
+          <div className="absolute bottom-3 left-3 right-3 flex items-center gap-3 rounded-2xl bg-white p-3 shadow-card">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={logo} alt="" className="h-10 w-10 rounded-full object-cover" />
+            <div className="flex-1">
+              <p className="font-bold leading-tight">Café Latte</p>
+              <p className="text-sm text-coffee-700">Preview of a menu card</p>
+            </div>
+            <span className="font-bold">₱150</span>
+          </div>
+          <p className="absolute left-3 top-3 font-display text-2xl font-bold text-coffee-900">Slow down. Sip.</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <label className="btn-secondary btn-sm cursor-pointer">
+            {uploading ? <Spinner /> : s.background_url ? "Change background" : "Upload background"}
+            <input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" aria-label="Upload background" onChange={(e) => upload(e.target.files?.[0], "background")} />
+          </label>
+          {s.background_url && (
+            <button type="button" className="btn-ghost btn-sm" onClick={() => set("background_url", null)}>
+              Remove background
+            </button>
+          )}
+        </div>
+        {s.background_url && (
+          <div>
+            <label className="label" htmlFor="fade">
+              Fade: {fade}% <span className="font-normal text-coffee-600">(higher = softer photo, easier to read)</span>
+            </label>
+            <input
+              id="fade"
+              type="range"
+              min={40}
+              max={95}
+              step={5}
+              value={fade}
+              onChange={(e) => set("background_fade", Number(e.target.value))}
+              className="w-full accent-coffee-700"
+            />
+          </div>
+        )}
+        <p className="hint">Landscape photo, at least 1600 px wide (e.g. your café interior or a coffee close-up). Shown behind customer pages only, not the staff screens. Max 5 MB.</p>
+      </div>
+
+      <p className="rounded-2xl bg-cream-100 px-4 py-3 text-sm text-coffee-700">
+        The icon on phones&apos; home screens (the Isla app icon) is set when the app is published to the stores and only changes with an app update.
+      </p>
     </section>
   );
 }

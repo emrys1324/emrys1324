@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Status-bar notification icon: white silhouette of the Isla cup (Android tints it). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="64" android:viewportHeight="64">
+    <path android:fillColor="#FFFFFFFF"
+        android:pathData="M14,24h28v10a14,14 0,0 1,-14 14h0a14,14 0,0 1,-14 -14z"/>
+    <path android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="4"
+        android:pathData="M42,28h4a6,6 0,0 1,0 12h-5"/>
+    <path android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="3.5" android:strokeLineCap="round"
+        android:pathData="M22,18c0,-4 4,-4 4,-8M31,18c0,-4 4,-4 4,-8"/>
+</vector>
