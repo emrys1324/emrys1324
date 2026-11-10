@@ -52,3 +52,4 @@ body { @apply bg-cream text-coffee-900 antialiased; font-size: 16px; }
   content: ""; position: absolute; inset: 6px; border-radius: 50%; background: #fbf7f0;
 }
 .leaflet-container { font: inherit; }
+.isla-pin-google { position: relative; width: 28px; height: 40px; }

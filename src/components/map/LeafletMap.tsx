@@ -2,28 +2,15 @@
 import { useEffect, useRef } from "react";
 import "leaflet/dist/leaflet.css";
 import type { Map as LMap, Marker } from "leaflet";
-import { DEFAULT_CENTER, round6, type LatLng } from "@/lib/maps";
+import { DEFAULT_CENTER, round6 } from "@/lib/maps";
+import type { MapProps } from "./MapView";
 
 /**
  * OpenStreetMap via Leaflet (loaded in the browser only).
  * - `interactive`: tap to place the pin, drag to adjust → onChange
  * - otherwise a still preview of `value`
  */
-export function LeafletMap({
-  value,
-  onChange,
-  interactive = false,
-  className = "",
-  zoom = 16,
-  label = "Map",
-}: {
-  value: LatLng | null;
-  onChange?: (p: LatLng) => void;
-  interactive?: boolean;
-  className?: string;
-  zoom?: number;
-  label?: string;
-}) {
+export function LeafletMap({ value, onChange, center, interactive = false, className = "", zoom = 16, label = "Map" }: MapProps) {
   const el = useRef<HTMLDivElement>(null);
   const map = useRef<LMap | null>(null);
   const marker = useRef<Marker | null>(null);
@@ -37,7 +24,7 @@ export function LeafletMap({
     import("leaflet").then((leaflet) => {
       if (cancelled || !el.current || map.current) return;
       L.current = leaflet;
-      const start = value ?? DEFAULT_CENTER;
+      const start = value ?? center ?? DEFAULT_CENTER;
       const m = leaflet.map(el.current, {
         center: [start.lat, start.lng],
         zoom: value ? zoom : 15,
@@ -77,7 +64,7 @@ export function LeafletMap({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function placeMarker(p: LatLng) {
+  function placeMarker(p: { lat: number; lng: number }) {
     const leaflet = L.current;
     const m = map.current;
     if (!leaflet || !m) return;
@@ -114,6 +101,12 @@ export function LeafletMap({
     if (Math.abs(cur.lat - value.lat) > 1e-5 || Math.abs(cur.lng - value.lng) > 1e-5) m.setView([value.lat, value.lng], Math.max(m.getZoom(), zoom));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value?.lat, value?.lng]);
+
+  // no pin yet → show the chosen barangay
+  useEffect(() => {
+    if (map.current && center && !value) map.current.setView([center.lat, center.lng], 15);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [center?.lat, center?.lng]);
 
   return <div ref={el} role="application" aria-label={label} data-testid="leaflet-map" className={`isolate z-0 overflow-hidden rounded-2xl bg-coffee-50 ${className}`} />;
 }

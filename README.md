@@ -18,7 +18,7 @@ More screenshots are in [`docs/screenshots/`](docs/screenshots).
 
 **Customers** go from menu to order placed in 3 screens:
 1. **Menu**: categories, photos, prices and "Sold out" badges. Tap an item to choose options (hot/iced, sugar level, milk, add-ons, pizza size) with live price updates. The cart opens as a drawer on the same screen.
-2. **Checkout** (one page): pickup, delivery or dine-in; ASAP or a 15-minute time slot; name and mobile number. Delivery adds a barangay (the fee applies automatically), street/purok, landmark, notes to the rider and an optional **map pin** (tap the map or "Use my current location"; OpenStreetMap, no API key). Payment is cash, or GCash (QR code + reference number + screenshot upload).
+2. **Checkout** (one page): pickup, delivery or dine-in; ASAP or a 15-minute time slot; name and mobile number. Delivery adds a barangay (the fee applies automatically), street/purok, landmark, notes to the rider and an optional **map pin** (tap the map or "Use my current location"). With a Google Maps key the address and map stay in sync: Google address suggestions move the pin, the barangay centres the map, and moving the pin fills in empty fields. See [docs/MAPS.md](docs/MAPS.md). Without a key it uses OpenStreetMap. Payment is cash, or GCash (QR code + reference number + screenshot upload).
 3. **Confirmation & live status**: order number (e.g. `PH-0001`), a live progress timeline, and a shareable link.
 
 There's also an optional **account** (`/account`) that saves the customer's address (and map pin) and shows their order history.
@@ -64,6 +64,7 @@ npm run db:start
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `ANON_KEY`, or Settings → API → anon public | browser + server |
 | `SUPABASE_SERVICE_ROLE_KEY` | `SERVICE_ROLE_KEY`, or Settings → API → service_role | **server only**: "Add rider" button + seed script. Never expose it. |
 | `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` / `SEED_RIDER_EMAIL` / `SEED_RIDER_PASSWORD` | your choice (optional) | `npm run seed:users` |
+| `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`, `NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID` | see [docs/MAPS.md](docs/MAPS.md) | browser: Google map + address suggestions (optional; OpenStreetMap without it) |
 | `HITPAY_API_KEY`, `HITPAY_SALT`, `HITPAY_ENV`, `NEXT_PUBLIC_SITE_URL` | see [docs/PAYMENTS.md](docs/PAYMENTS.md) | **server only**: online payments (optional) |
 | `PUSH_WEBHOOK_SECRET`, `FIREBASE_SERVICE_ACCOUNT`, `APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_PRIVATE_KEY`, `APNS_BUNDLE_ID` | see [docs/MOBILE.md](docs/MOBILE.md) | **server only**: push notifications for the Isla app (optional) |
 
@@ -118,6 +119,7 @@ Open http://localhost:3000. Staff and riders sign in at http://localhost:3000/lo
 | Online payments: browser flow (14 checks) | `npm run test:payments:e2e` | Pay online → board shows order only when paid → refund → resume abandoned checkout → confirm without webhook. See docs/PAYMENTS.md for the env to start the app with. |
 | Branding (21 checks) | `npm run test:branding` | Logo, background, store name, staff title and header colours: live updates, measured text contrast, staff screens stay plain, reset to defaults. |
 | Delivery map pin (23 checks) | `npm run test:maps` | Pin by tap / current location / remove, saved on the order + account, guest pin remembered, server rejects pins outside the Philippines, rider Google Maps/Waze links + no-pin fallback, staff pin link. |
+| Google Maps mode (26 checks) | `npm run test:google-maps` | Address suggestions → pin, barangay → map, pin → fills empty fields, never overwrites, rider/staff previews, fallback to OpenStreetMap if Google rejects the key. Uses a Google Maps stand-in; start the app with `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=test-key`. |
 | End-to-end acceptance test | `npm run test:e2e` | Needs local Supabase + `seed:users` + the app on :3000, plus Playwright (`npm i -D playwright && npx playwright install chromium`). Drives a customer phone, staff tablet and rider phone at once and re-creates the screenshots. |
 
 The end-to-end test covers every acceptance criterion: a guest orders a customised iced latte for delivery and pays by GCash screenshot. Staff see it instantly with a chime, verify payment, accept, assign the rider and mark it ready, and the customer's page updates live at each step. The rider sees only their order and marks it picked up, then delivered. Marking Americano sold out removes its Add button on the customer's phone at once. Closing the store blocks ordering with a friendly message.
@@ -147,4 +149,4 @@ docs/                          SCHEMA.md, PHASE2.md, screenshots
 - **Phone validation** accepts `09XXXXXXXXX`, `+639…` or `639…` (spaces and dashes are fine) and stores everything as `09XXXXXXXXX`.
 - **Cash orders** are marked paid automatically when completed or delivered.
 
-Further reading: [Database schema](docs/SCHEMA.md) · [Phase 2 roadmap](docs/PHASE2.md)
+Further reading: [Delivery map](docs/MAPS.md) · [Database schema](docs/SCHEMA.md) · [Phase 2 roadmap](docs/PHASE2.md)
