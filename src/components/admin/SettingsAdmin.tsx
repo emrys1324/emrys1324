@@ -152,7 +152,7 @@ export function SettingsAdmin() {
                     if (!f) return;
                     setUploading(true);
                     try {
-                      set("gcash_qr_url", await uploadPublicImage(f, "gcash"));
+                      set("gcash_qr_url", await uploadPublicImage(f, "gcash", { resize: false })); // never recompress a QR code
                       setMsg({ tone: "green", text: "QR uploaded — press Save settings to publish it." });
                     } catch (err) {
                       setMsg({ tone: "red", text: (err as Error).message });
@@ -297,7 +297,7 @@ function BrandingSection({
       if (!size) throw new Error("That file doesn't look like an image. Please use JPG, PNG or WebP.");
       if (kind === "logo" && Math.min(size.w, size.h) < 128) throw new Error("Logo is too small — please use at least 256 × 256 pixels.");
       if (kind === "background" && Math.max(size.w, size.h) < 1000) throw new Error("Background is too small — please use at least 1600 pixels wide so it stays sharp.");
-      const url = await uploadPublicImage(file, "branding");
+      const url = await uploadPublicImage(file, "branding", { maxDim: kind === "background" ? 2400 : 800 });
       set(kind === "logo" ? "logo_url" : "background_url", url);
       const squareNote = kind === "logo" && Math.abs(size.w - size.h) > Math.min(size.w, size.h) * 0.1 ? " Tip: a square logo looks best — it's shown in a circle." : "";
       setMsg({ tone: "green", text: `${kind === "logo" ? "Logo" : "Background"} uploaded — press Save settings to publish it.${squareNote}` });
