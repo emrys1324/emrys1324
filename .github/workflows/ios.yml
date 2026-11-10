@@ -22,6 +22,12 @@ on:
 permissions:
   contents: read
 
+# "shell: bash" makes every step run with -eo pipefail, so a failing command
+# piped into `tail` still fails the job.
+defaults:
+  run:
+    shell: bash
+
 jobs:
   check:
     runs-on: macos-latest
