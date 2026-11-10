@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
-import { Logo } from "./Header";
+import { Logo, useCustomerHeaderStyle } from "./Header";
 import { Alert, Badge, PageLoader } from "@/components/ui";
 import { getSupabase } from "@/lib/supabase/client";
 import { enableOrderPush, isNativeApp, pushAvailable, type PushResult } from "@/lib/native";
@@ -63,6 +63,7 @@ export function OrderStatusScreen({ token }: { token: string }) {
 
 function Inner({ token }: { token: string }) {
   const isNew = useSearchParams().get("new") === "1";
+  const hs = useCustomerHeaderStyle();
   const [order, setOrder] = useState<PublicOrder | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [live, setLive] = useState(false);
@@ -147,10 +148,10 @@ function Inner({ token }: { token: string }) {
 
   return (
     <div className="min-h-screen pb-10">
-      <header className="border-b border-coffee-100 bg-cream pt-[env(safe-area-inset-top)]">
+      <header className={`border-b pt-[env(safe-area-inset-top)] ${hs.className}`} style={hs.style}>
         <div className="mx-auto flex max-w-lg items-center justify-between px-4 py-3">
           <Logo small />
-          <span className={`flex items-center gap-1.5 text-xs font-semibold ${live ? "text-sage-700" : "text-coffee-600"}`}>
+          <span className="flex items-center gap-1.5 text-xs font-semibold text-[color:var(--hmuted,#556c4d)]">
             <span className={`h-2 w-2 rounded-full ${live ? "bg-sage-500" : "bg-stone-400"}`} aria-hidden />
             {live ? "Live updates" : "Connecting…"}
           </span>

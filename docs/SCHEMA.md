@@ -20,7 +20,7 @@ delivery_zones 1─* orders ─1 (customer_id → users, rider_id → riders)
 
 | Table | What it holds | Who can read / write |
 |---|---|---|
-| **store_settings** | A single row: store name, **logo and background image (+ fade %)**, **open/closed switch**, open and close time (closing after midnight is supported), timezone (`Asia/Manila`), delivery minimum, usual prep minutes, closed message, GCash name/number/QR URL. | Everyone reads · admin writes |
+| **store_settings** | A single row: store name, **logo and background image (+ fade %), customer/staff header colours and staff header title**, **open/closed switch**, open and close time (closing after midnight is supported), timezone (`Asia/Manila`), delivery minimum, usual prep minutes, closed message, GCash name/number/QR URL. | Everyone reads · admin writes |
 | **users** | Profile for each login (1:1 with Supabase `auth.users`): **role** (`customer`/`admin`/`rider`), name, phone, email, saved barangay/street/landmark. Created automatically on sign-up. A trigger stops anyone except an admin from changing roles. | Own row (admin: all) |
 | **riders** | Delivery riders: name, phone, active flag, link to their `users` login. Kept separate so a rider can be deactivated without deleting their history. | Admin all · a rider reads their own row |
 | **menu_categories** | Coffee, Non-Coffee, Pastries, Meals: name, display order, visible flag. | Everyone reads · admin writes |

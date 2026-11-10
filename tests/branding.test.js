@@ -67,7 +67,63 @@ const assert = (c, m) => {
   await cust.locator("img").first().waitFor();
   assert((await cust.getByTestId("brand-background").count()) === 0 && (await cust.locator("main img").first().getAttribute("src")) === logoSrc, "login page: new logo, no background");
 
+  // ---- headers: titles + colours, readable text chosen automatically
+  const lum = (rgb) => {
+    const [r, g, b] = rgb.match(/\d+/g).slice(0, 3).map((v) => {
+      const c = Number(v) / 255;
+      return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  };
+  const ratio = (a, b) => {
+    const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
+    return (hi + 0.05) / (lo + 0.05);
+  };
+  await admin.locator("#header-color").fill("#808080");
+  await admin.getByText("This colour makes header text hard to read").first().waitFor();
+  assert(true, "low-contrast header colour shows a readability warning");
+  await admin.locator("#header-color").fill("#1e3a5f");
+  await admin.locator("#store-name").fill("Isla Café");
+  await admin.locator("#staff-title").fill("Kusina Team");
+  await admin.getByRole("button", { name: "Use colour #fbf7f0" }).nth(1).click(); // light staff header
+  assert((await admin.getByTestId("staff-header-preview").textContent()).includes("Kusina Team"), "staff header preview shows the new title");
+  await admin.getByTestId("customer-header-preview").scrollIntoViewIfNeeded();
+  await admin.screenshot({ path: SHOTS + "15-admin-header-settings.png" });
+  await admin.getByRole("button", { name: "Save settings" }).click();
+  await admin.getByText("Settings saved.").waitFor();
+
+  const staffHeader = admin.getByTestId("staff-header");
+  await admin.waitForFunction(() => document.querySelector("[data-testid=staff-title]")?.textContent?.trim() === "Kusina Team", null, { timeout: 5000 });
+  const sBg = await staffHeader.evaluate((el) => getComputedStyle(el).backgroundColor);
+  const sFg = await admin.getByTestId("staff-title").evaluate((el) => getComputedStyle(el).color);
+  assert(sBg === "rgb(251, 247, 240)", "staff header uses the chosen light colour");
+  assert(ratio(sBg, sFg) >= 4.5, `staff title switched to dark text (contrast ${ratio(sBg, sFg).toFixed(1)}:1)`);
+  const tabFg = await admin.getByRole("link", { name: "Menu" }).evaluate((el) => getComputedStyle(el).color);
+  assert(ratio(sBg, tabFg) >= 4.5, `staff nav links readable on light header (${ratio(sBg, tabFg).toFixed(1)}:1)`);
+  await admin.screenshot({ path: SHOTS + "16-staff-header-custom.png" });
+
+  await cust.goto(BASE + "/");
+  await cust.waitForFunction(() => document.querySelector("[data-testid=store-title]")?.textContent?.trim() === "Isla Café", null, { timeout: 8000 });
+  await cust.waitForTimeout(400); // let the buttons' 150 ms colour transition finish
+  const cBg = await cust.getByTestId("customer-header").evaluate((el) => getComputedStyle(el).backgroundColor);
+  const cFg = await cust.getByTestId("store-title").evaluate((el) => getComputedStyle(el).color);
+  const iconFg = await cust.getByRole("link", { name: "My account" }).evaluate((el) => getComputedStyle(el).color);
+  assert(cBg === "rgb(30, 58, 95)", "customer header uses the chosen colour");
+  assert(ratio(cBg, cFg) >= 4.5 && ratio(cBg, iconFg) >= 4.5, `customer title + icon switched to light text (contrast ${ratio(cBg, cFg).toFixed(1)}:1)`);
+  await cust.screenshot({ path: SHOTS + "17-customer-header-custom.png" });
+
+  // live update on an already-open page (no reload)
+  await admin.locator("#store-name").fill("Isla Café Live");
+  await admin.getByRole("button", { name: "Save settings" }).click();
+  await admin.getByText("Settings saved.").waitFor();
+  await cust.waitForFunction(() => document.querySelector("[data-testid=store-title]")?.textContent?.trim() === "Isla Café Live", null, { timeout: 8000 });
+  assert(true, "store name changes live on an open customer page");
+
   // revert to defaults
+  await admin.locator("#store-name").fill("Pahuway Cafe");
+  await admin.locator("#staff-title").fill("Pahuway Staff");
+  await admin.getByRole("button", { name: "Default", exact: true }).first().click();
+  await admin.getByRole("button", { name: "Default", exact: true }).first().click();
   await admin.getByRole("button", { name: "Use default logo" }).click();
   await admin.getByRole("button", { name: "Remove background" }).click();
   await admin.getByRole("button", { name: "Save settings" }).click();
@@ -75,6 +131,9 @@ const assert = (c, m) => {
   await cust.goto(BASE + "/");
   await cust.getByRole("heading", { name: "Coffee", exact: true }).waitFor();
   assert((await cust.locator("header img").first().getAttribute("src")) === "/logo.svg" && (await cust.getByTestId("brand-background").count()) === 0, "defaults restored");
+  assert((await cust.getByTestId("store-title").textContent()).trim() === "Pahuway Cafe", "store name restored");
+  const restoredBg = await cust.getByTestId("customer-header").evaluate((el) => getComputedStyle(el).backgroundColor);
+  assert(restoredBg.startsWith("rgba(251, 247, 240"), "customer header back to default cream");
 
   await browser.close();
   console.log("\nALL BRANDING TESTS PASSED");
