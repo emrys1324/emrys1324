@@ -48,7 +48,7 @@ function startMockHitpay({ port = 4010, salt, webhooks = true, apiKey }) {
         if (req.method === "GET") {
           res.setHeader("Content-Type", "text/html");
           return res.end(`<!doctype html><title>HitPay (mock)</title><h1>HitPay checkout (mock)</h1>
-            <p id="ref">${r.reference_number}</p><p id="amount">PHP ${r.amount}</p><p id="methods">${r.payment_methods.join(",")}</p>
+            <p id="ref">${r.reference_number}</p><p id="amount">PHP ${r.amount}</p><p id="methods">${r.payment_methods.join(",") || "all-enabled"}</p>
             <form method="post" action="/checkout/${r.id}/pay"><button>Pay with GCash</button></form>
             <a href="${r.redirect_url}">Back to merchant</a>`);
         }

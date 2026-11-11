@@ -34,7 +34,7 @@ Vercel → your project → **Settings → Environment Variables**, then **Redep
 | `HITPAY_SALT` | your salt (used to check that payment notifications really come from HitPay) |
 | `HITPAY_ENV` | `sandbox` while testing, `live` when you go live |
 | `NEXT_PUBLIC_SITE_URL` | `https://pahuway-cafe.vercel.app` (used for the return and webhook links) |
-| `HITPAY_METHODS` | optional — defaults to `gcash,qrph` |
+| `HITPAY_METHODS` | optional — leave empty to offer every method enabled on your HitPay account (recommended) |
 
 There's no separate webhook to register: the site gives HitPay its webhook address with every payment.
 
@@ -51,7 +51,7 @@ Swap in your **live** API key and salt, set `HITPAY_ENV=live`, redeploy, and pla
 HitPay charges a per-transaction fee (a percentage that differs per method — QR Ph is typically the cheapest) and has no monthly fee for the standard plan. Check https://www.hitpayapp.com/pricing for current Philippine rates. Payouts go to your bank account on HitPay's schedule.
 
 ## Notes & limits
-- **Method names:** the site asks HitPay for `gcash` and `qrph`. If HitPay names a method differently on your account, set `HITPAY_METHODS` accordingly (e.g. add `grabpay`) — no code change needed.
+- **Methods:** by default the site doesn't restrict methods, so HitPay's page shows whatever is enabled on your account. The café's live account (checked Nov 2026) offers **QR Ph** (`qrph_netbank` — scan with GCash, Maya or a bank app) and UnionBank UPay options (`upay_instapay`, `upay_online`, `upay_pchc`, `upay_ecpy` ECPay, `upay_bayd` Bayad, `upay_plwn` Palawan). To limit them, set e.g. `HITPAY_METHODS=qrph_netbank`. Note: a direct `gcash` method isn't enabled on the account; GCash users pay via QR Ph.
 - **Refunds:** HitPay may not support automatic refunds for every method. If the refund button shows an error, refund from the HitPay dashboard (or send the money back via GCash).
 - **Isla mobile app:** not changed yet. In the app, HitPay's page opens in the phone's browser and the customer returns to the website there; the order still works and shows on the staff board.
 - **Verified so far against a HitPay mock** that follows HitPay's documented API; please run the sandbox test (step 5) once your keys are in — I can do it with you.

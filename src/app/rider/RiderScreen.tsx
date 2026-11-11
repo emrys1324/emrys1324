@@ -8,7 +8,7 @@ import { formatPeso, friendlyError, STATUS_LABEL } from "@/lib/format";
 import { formatTime, storeNow } from "@/lib/hours";
 import { playChime, unlockAudio } from "@/lib/sound";
 import type { Order } from "@/lib/types";
-import { LeafletMap } from "@/components/map/LeafletMap";
+import { MapView } from "@/components/map/MapView";
 import { googleMapsDirections, toLatLng, wazeDirections } from "@/lib/maps";
 
 export function RiderScreen() {
@@ -151,7 +151,7 @@ export function RiderScreen() {
                   {o.landmark && <p>Landmark: {o.landmark}</p>}
                   {o.rider_notes && <p className="mt-1 rounded-lg bg-amber-50 px-2 py-1 text-sm font-medium text-amber-900">Note: {o.rider_notes}</p>}
                   {pin ? (
-                    <LeafletMap value={pin} className="mt-2 h-40 w-full" label={`Map of ${o.customer_name}'s pinned location`} />
+                    <MapView value={pin} className="mt-2 h-40 w-full" label={`Map of ${o.customer_name}'s pinned location`} />
                   ) : (
                     <p className="mt-1 text-xs text-coffee-600">No map pin — directions use the typed address.</p>
                   )}

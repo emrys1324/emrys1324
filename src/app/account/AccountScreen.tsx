@@ -1,6 +1,8 @@
 "use client";
 import Link from "next/link";
 import { MapPicker } from "@/components/map/MapPicker";
+import { StreetAutocomplete } from "@/components/map/StreetAutocomplete";
+import { useAddressSync } from "@/components/map/useAddressSync";
 import { toLatLng } from "@/lib/maps";
 import { useCallback, useEffect, useState } from "react";
 import { StoreHeader } from "@/components/customer/Header";
@@ -160,6 +162,18 @@ function Profile({ user }: { user: User }) {
     load();
   }, [load]);
 
+  const put = (patch: Partial<Profile>) => setProfile((p) => (p ? { ...p, ...patch } : p));
+  const sync = useAddressSync({
+    zones,
+    zoneId: profile?.zone_id ?? "",
+    setZoneId: (v) => put({ zone_id: v }),
+    street: profile?.street ?? "",
+    setStreet: (v) => put({ street: v }),
+    landmark: profile?.landmark ?? "",
+    setLandmark: (v) => put({ landmark: v }),
+    pin: toLatLng(profile?.saved_lat, profile?.saved_lng),
+    setPin: (p) => put({ saved_lat: p?.lat ?? null, saved_lng: p?.lng ?? null }),
+  });
   if (!profile) return <PageLoader />;
 
   const save = async (e: React.FormEvent) => {
@@ -236,7 +250,7 @@ function Profile({ user }: { user: User }) {
           <label className="label" htmlFor="p-street">
             House no. / Street / Purok
           </label>
-          <input id="p-street" className="input" value={profile.street ?? ""} onChange={set("street")} />
+          <StreetAutocomplete id="p-street" value={profile.street ?? ""} onChange={(v) => put({ street: v })} onPick={sync.onSuggestion} enabled={sync.enabled} />
         </div>
         <div>
           <label className="label" htmlFor="p-landmark">
@@ -244,10 +258,7 @@ function Profile({ user }: { user: User }) {
           </label>
           <input id="p-landmark" className="input" value={profile.landmark ?? ""} onChange={set("landmark")} />
         </div>
-        <MapPicker
-          value={toLatLng(profile.saved_lat, profile.saved_lng)}
-          onChange={(p) => setProfile({ ...profile, saved_lat: p?.lat ?? null, saved_lng: p?.lng ?? null })}
-        />
+        <MapPicker value={toLatLng(profile.saved_lat, profile.saved_lng)} onChange={sync.onPinChange} center={sync.center} note={sync.note} />
         <button className="btn-primary w-full" disabled={saving}>
           {saving ? <Spinner /> : "Save"}
         </button>

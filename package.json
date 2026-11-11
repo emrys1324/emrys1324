@@ -21,7 +21,8 @@
     "test:payments": "tsx tests/payments-route.test.ts",
     "test:payments:e2e": "node tests/payments-e2e.test.js",
     "test:photos": "node tests/photos.test.js",
-    "test:maps": "node tests/maps.test.js"
+    "test:maps": "node tests/maps.test.js",
+    "test:google-maps": "node tests/google-maps.test.js"
   },
   "dependencies": {
     "@capacitor/android": "8.6.0",
@@ -41,6 +42,7 @@
   "devDependencies": {
     "@capacitor/assets": "4.0.0",
     "@capacitor/cli": "8.6.0",
+    "@types/google.maps": "3.66.10",
     "@types/leaflet": "1.9.22",
     "@types/node": "^22.10.0",
     "@types/react": "^19.1.0",

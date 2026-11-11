@@ -5,7 +5,7 @@ import { getSupabase } from "@/lib/supabase/client";
 import { formatPeso, ORDER_TYPE_LABEL, PAYMENT_STATUS_LABEL, STATUS_LABEL } from "@/lib/format";
 import { formatDateTime, formatTime } from "@/lib/hours";
 import type { Order, OrderStatus, Rider } from "@/lib/types";
-import { LeafletMap } from "@/components/map/LeafletMap";
+import { MapView } from "@/components/map/MapView";
 import { googleMapsPin, toLatLng } from "@/lib/maps";
 
 const REJECT_REASONS = ["Item not available", "Outside our delivery area", "GCash payment not received", "We're about to close", "Couldn't reach customer"];
@@ -149,7 +149,7 @@ export function OrderDetail({ order, riders, onClose }: { order: Order | null; r
               {o.rider_notes && <p className="mt-1 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">Note to rider: {o.rider_notes}</p>}
               {pin ? (
                 <div className="mt-2 space-y-1">
-                  <LeafletMap key={o.id} value={pin} className="h-36 w-full" label="Customer's pinned location" />
+                  <MapView key={o.id} value={pin} className="h-36 w-full" label="Customer's pinned location" />
                   <a className="text-sm font-semibold text-coffee-700 underline" href={googleMapsPin(pin)} target="_blank" rel="noreferrer" data-testid="staff-pin-link">
                     📍 Pinned location — open in Google Maps
                   </a>

@@ -30,10 +30,16 @@ const assert = (c, m) => {
   // 1. enable online payments
   await admin.goto(BASE + "/admin/settings");
   await admin.getByText("Test mode:").waitFor();
-  await admin.getByRole("switch", { name: "Accept online payments" }).click();
+  const onlineSwitch = admin.getByRole("switch", { name: "Accept online payments" });
+  await admin.waitForTimeout(500); // let the saved settings load before toggling
+  if ((await onlineSwitch.getAttribute("aria-checked")) !== "true") await onlineSwitch.click();
+  await admin.waitForFunction(() => document.querySelector("[role=switch][aria-label='Accept online payments'], [role=switch]")?.getAttribute("aria-checked") !== null);
+  if ((await onlineSwitch.getAttribute("aria-checked")) !== "true") throw new Error("online payments switch did not turn on");
   await admin.getByRole("button", { name: "Save settings" }).click();
   await admin.getByText("Settings saved.").waitFor();
-  assert(true, "admin turned on online payments (test-mode notice shown)");
+  const { execFileSync } = require("child_process");
+  const saved = execFileSync("docker", ["exec", "-i", "supabase_db_pahuway-cafe", "psql", "-U", "postgres", "-Atc", "select online_payments_enabled from store_settings"]).toString().trim();
+  assert(saved === "t", "admin turned on online payments (test-mode notice shown, saved)");
 
   await admin.goto(BASE + "/admin");
   await admin.getByText("Live", { exact: true }).waitFor();
@@ -55,7 +61,7 @@ const assert = (c, m) => {
   await cust.screenshot({ path: SHOTS + "18-checkout-pay-online.png", fullPage: true });
   await cust.getByRole("button", { name: /Continue to payment · ₱160/ }).click();
   await cust.waitForURL(/127\.0\.0\.1:4010\/checkout\/pr_1/);
-  assert((await cust.locator("#amount").textContent()) === "PHP 160.00" && (await cust.locator("#methods").textContent()) === "gcash,qrph", "redirected to HitPay checkout for ₱160 with GCash + QR Ph");
+  assert((await cust.locator("#amount").textContent()) === "PHP 160.00" && (await cust.locator("#methods").textContent()) === "all-enabled", "redirected to HitPay checkout for ₱160 with the account's payment methods");
   const orderNo = await cust.locator("#ref").textContent();
 
   await admin.waitForTimeout(3000);

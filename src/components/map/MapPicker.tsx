@@ -1,10 +1,10 @@
 "use client";
 import { useState } from "react";
-import { LeafletMap } from "./LeafletMap";
+import { MapView } from "./MapView";
 import { inPhilippines, round6, type LatLng } from "@/lib/maps";
 
 /** Optional delivery pin: tap/drag on the map, or use the phone's location. */
-export function MapPicker({ value, onChange }: { value: LatLng | null; onChange: (p: LatLng | null) => void }) {
+export function MapPicker({ value, onChange, center, note }: { value: LatLng | null; onChange: (p: LatLng | null) => void; center?: LatLng | null; note?: string | null }) {
   const [locating, setLocating] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -47,9 +47,9 @@ export function MapPicker({ value, onChange }: { value: LatLng | null; onChange:
       <button type="button" className="btn-secondary btn-sm w-full" onClick={useMyLocation} disabled={locating}>
         {locating ? "Finding you…" : "📍 Use my current location"}
       </button>
-      <LeafletMap value={value} onChange={onChange} interactive className="h-56 w-full border border-coffee-200" label="Delivery location map. Tap to place the pin." />
+      <MapView value={value} onChange={onChange} center={center} interactive className="h-56 w-full border border-coffee-200" label="Delivery location map. Tap to place the pin." />
       <p className="hint" aria-live="polite">
-        {msg ?? (value ? "Pinned ✓ Drag the pin to adjust." : "Tap the map to drop a pin at your door.")}
+        {msg ?? note ?? (value ? "Pinned ✓ Drag the pin to adjust." : "Tap the map to drop a pin at your door.")}
       </p>
     </div>
   );

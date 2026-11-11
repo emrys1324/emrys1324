@@ -13,6 +13,8 @@ import { formatClock, timeSlots } from "@/lib/hours";
 import { useStoreSettings } from "@/lib/store-settings";
 import type { OrderType, PaymentMethod, Zone } from "@/lib/types";
 import { MapPicker } from "@/components/map/MapPicker";
+import { StreetAutocomplete } from "@/components/map/StreetAutocomplete";
+import { useAddressSync } from "@/components/map/useAddressSync";
 import { isLatLng, toLatLng, type LatLng } from "@/lib/maps";
 
 const GUEST_KEY = "pahuway-guest-details";
@@ -111,6 +113,7 @@ export function CheckoutScreen() {
   }, [proof]);
 
   const slots = useMemo(() => (settings ? timeSlots(settings) : []), [settings, open]); // eslint-disable-line react-hooks/exhaustive-deps
+  const sync = useAddressSync({ zones, zoneId, setZoneId, street, setStreet, landmark, setLandmark, pin, setPin });
   const zone = zones.find((z) => z.id === zoneId);
   const fee = orderType === "delivery" && zone ? Number(zone.fee) : 0;
   const total = subtotal + fee;
@@ -370,7 +373,7 @@ export function CheckoutScreen() {
                 <label className="label" htmlFor="street">
                   House no. / Street / Purok
                 </label>
-                <input id="street" className="input" autoComplete="street-address" value={street} onChange={(e) => setStreet(e.target.value)} maxLength={160} placeholder="Purok 3, Rizal St." />
+                <StreetAutocomplete id="street" value={street} onChange={setStreet} onPick={sync.onSuggestion} enabled={sync.enabled} placeholder="Purok 3, Rizal St." />
                 {errors.street && <p className="error-text">{errors.street}</p>}
               </div>
               <div>
@@ -379,13 +382,13 @@ export function CheckoutScreen() {
                 </label>
                 <input id="landmark" className="input" value={landmark} onChange={(e) => setLandmark(e.target.value)} maxLength={160} placeholder="Blue gate beside the chapel" />
               </div>
+              <MapPicker value={pin} onChange={sync.onPinChange} center={sync.center} note={sync.note} />
               <div>
                 <label className="label" htmlFor="rider-notes">
                   Notes to rider <span className="font-normal text-coffee-600">(optional)</span>
                 </label>
                 <input id="rider-notes" className="input" value={riderNotes} onChange={(e) => setRiderNotes(e.target.value)} maxLength={200} placeholder="Please call when you're near" />
               </div>
-              <MapPicker value={pin} onChange={setPin} />
             </>
           )}
         </section>
@@ -422,7 +425,7 @@ export function CheckoutScreen() {
           {payment === "online" && (
             <div className="rounded-2xl bg-sage-100 p-4 text-sm text-sage-700" data-testid="online-pay-info">
               <p className="font-bold">You&apos;ll pay {formatPeso(total)} on HitPay&apos;s secure page.</p>
-              <p>Choose GCash or QR Ph (scan with any bank or e-wallet app). Your order goes to our baristas as soon as the payment is confirmed. Please pay within 30 minutes.</p>
+              <p>Pay with GCash, Maya or your bank app by scanning the QR Ph code, or with online banking. Your order goes to our baristas as soon as the payment is confirmed. Please pay within 30 minutes.</p>
             </div>
           )}
 
