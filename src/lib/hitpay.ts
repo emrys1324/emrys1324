@@ -3,7 +3,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 /**
  * Minimal HitPay client (Payment Requests API). Server-only.
  * Env: HITPAY_API_KEY, HITPAY_SALT (both from HitPay → Settings → Payment Gateway → API Keys),
- *      HITPAY_ENV = "live" | "sandbox" (default sandbox), HITPAY_METHODS (default "gcash,qrph"),
+ *      HITPAY_ENV = "live" | "sandbox" (default sandbox), HITPAY_METHODS (optional; default = every method enabled on the HitPay account),
  *      HITPAY_API_BASE (tests only).
  */
 export const LIVE_BASE = "https://api.hit-pay.com";
@@ -12,11 +12,18 @@ export const SANDBOX_BASE = "https://api.sandbox.hit-pay.com";
 export const apiBase = () => process.env.HITPAY_API_BASE || (process.env.HITPAY_ENV === "live" ? LIVE_BASE : SANDBOX_BASE);
 export const isSandbox = () => process.env.HITPAY_ENV !== "live";
 export const hitpayConfigured = () => !!process.env.HITPAY_API_KEY && !!process.env.HITPAY_SALT;
-export const paymentMethods = () =>
-  (process.env.HITPAY_METHODS || "gcash,qrph")
+/**
+ * Methods to offer. Unset → don't restrict: HitPay shows whatever is enabled on the account
+ * (Philippine accounts name them e.g. "qrph_netbank", "upay_instapay" — a fixed list breaks
+ * checkout when a name isn't enabled).
+ */
+export const paymentMethods = (): string[] | undefined => {
+  const list = (process.env.HITPAY_METHODS ?? "")
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
+  return list.length ? list : undefined;
+};
 export const toCentavos = (pesos: number | string) => Math.round(Number(pesos) * 100);
 
 type Params = Record<string, string | string[] | undefined>;

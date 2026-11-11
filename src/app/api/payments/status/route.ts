@@ -9,6 +9,6 @@ export async function GET() {
   return NextResponse.json({
     configured: hitpayConfigured() && !!process.env.SUPABASE_SERVICE_ROLE_KEY,
     testMode: isSandbox(),
-    methods: paymentMethods(),
+    methods: paymentMethods() ?? [], // [] = all methods enabled on the HitPay account
   });
 }

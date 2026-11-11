@@ -425,7 +425,7 @@ export function CheckoutScreen() {
           {payment === "online" && (
             <div className="rounded-2xl bg-sage-100 p-4 text-sm text-sage-700" data-testid="online-pay-info">
               <p className="font-bold">You&apos;ll pay {formatPeso(total)} on HitPay&apos;s secure page.</p>
-              <p>Choose GCash or QR Ph (scan with any bank or e-wallet app). Your order goes to our baristas as soon as the payment is confirmed. Please pay within 30 minutes.</p>
+              <p>Pay with GCash, Maya or your bank app by scanning the QR Ph code, or with online banking. Your order goes to our baristas as soon as the payment is confirmed. Please pay within 30 minutes.</p>
             </div>
           )}
 
