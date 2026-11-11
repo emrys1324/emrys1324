@@ -57,7 +57,7 @@ export async function POST(req: Request) {
 
   // 1. New order → every admin device
   if (evt.new_order) {
-    const { data } = await db.from("push_tokens").select("token, platform, users!inner(role)").eq("users.role", "admin");
+    const { data } = await db.from("push_tokens").select("token, platform, users!inner(role, is_active)").in("users.role", ["admin", "staff"]).eq("users.is_active", true);
     jobs.push({
       devices: (data ?? []).map((r) => ({ token: r.token, platform: r.platform })),
       msg: { title: `🔔 New order ${order.order_number}`, body: `${type} · ${peso} · ${order.customer_name}`, url: "/admin", urgent: true },

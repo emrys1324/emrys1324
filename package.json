@@ -22,7 +22,8 @@
     "test:payments:e2e": "node tests/payments-e2e.test.js",
     "test:photos": "node tests/photos.test.js",
     "test:maps": "node tests/maps.test.js",
-    "test:google-maps": "node tests/google-maps.test.js"
+    "test:google-maps": "node tests/google-maps.test.js",
+    "test:staff": "node tests/staff.test.js"
   },
   "dependencies": {
     "@capacitor/android": "8.6.0",

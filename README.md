@@ -30,6 +30,8 @@ There's also an optional **account** (`/account`) that saves the customer's addr
 - **Zones**: barangays, fees and on/off switches.
 - **Settings**: **branding** (logo, background photo with fade, store name, staff header title, and customer/staff header colours with automatically readable text — updates live everywhere), open/closed switch (also in the header), hours, delivery minimum, prep time, GCash QR, and a **Riders** section to create rider logins.
 - **Summary**: orders, sales, average order, top 5 items, and sales by order type and payment method, for any day.
+- **Staff** (admins only): add team logins with **Orders only** access (orders board + Sold-out switches; no prices, zones, settings, refunds or sales) or **Full admin** access. Change someone's access, switch a login off/on (they're locked out at once, order history kept), reset a password, or delete a login. An admin can't lock themselves out, and the last active admin can't be removed.
+- **Sold out**: one page of switches for items and options (e.g. oat milk) — available to every staff member.
 
 **Riders** (`/rider`): only *their* assigned deliveries, with tap-to-call, address, landmark, a **map preview of the customer's pin with Google Maps and Waze buttons** (falls back to the typed address when there's no pin) and the **amount to collect**, plus big **Picked up** and **Delivered** buttons.
 
@@ -111,7 +113,7 @@ Open http://localhost:3000. Staff and riders sign in at http://localhost:3000/lo
 |---|---|---|
 | Type check | `npm run typecheck` | |
 | Production build | `npm run build` | |
-| Database rules (66 checks) | `npm run test:db` | Needs `npm run db:start`. Checks prices, validation, sold-out, closed store, minimum order, RLS (guest / customer / rider / admin), role escalation, rider actions, realtime broadcasts and the summary. Resets the local DB afterwards. |
+| Database rules | `npm run test:db` | Needs `npm run db:start`. Checks prices, validation, sold-out, closed store, minimum order, RLS (guest / customer / rider / staff / admin), staff limits and deactivation, role escalation, rider actions, realtime broadcasts and the summary. Resets the local DB afterwards. |
 | Database rules without Docker | see `supabase/tests/supabase_stubs.sql` | Runs the same scenarios on plain Postgres with stand-ins for Supabase's schemas. |
 | Push sender (Firebase + APNs mocked, 12 checks) | `npm run test:push` | Needs local Supabase + `seed:users`. |
 | App-mode behaviour (13 checks) | `npm run test:native` | Runs the site with Capacitor's real Android bridge and a fake native side: push registration, Notify me, no-Firebase safety. Needs the app on :3000. |
@@ -120,6 +122,7 @@ Open http://localhost:3000. Staff and riders sign in at http://localhost:3000/lo
 | Branding (21 checks) | `npm run test:branding` | Logo, background, store name, staff title and header colours: live updates, measured text contrast, staff screens stay plain, reset to defaults. |
 | Delivery map pin (23 checks) | `npm run test:maps` | Pin by tap / current location / remove, saved on the order + account, guest pin remembered, server rejects pins outside the Philippines, rider Google Maps/Waze links + no-pin fallback, staff pin link. |
 | Google Maps mode (26 checks) | `npm run test:google-maps` | Address suggestions → pin, barangay → map, pin → fills empty fields, never overwrites, rider/staff previews, fallback to OpenStreetMap if Google rejects the key. Uses a Google Maps stand-in; start the app with `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=test-key`. |
+| Staff logins (26 checks) | `npm run test:staff` | Add staff (validation, duplicate email), Orders-only limits (pages, APIs, store switch), Sold out page, change access, reset password, switch off/on (open session locked out), self-protection, delete. |
 | End-to-end acceptance test | `npm run test:e2e` | Needs local Supabase + `seed:users` + the app on :3000, plus Playwright (`npm i -D playwright && npx playwright install chromium`). Drives a customer phone, staff tablet and rider phone at once and re-creates the screenshots. |
 
 The end-to-end test covers every acceptance criterion: a guest orders a customised iced latte for delivery and pays by GCash screenshot. Staff see it instantly with a chime, verify payment, accept, assign the rider and mark it ready, and the customer's page updates live at each step. The rider sees only their order and marks it picked up, then delivered. Marking Americano sold out removes its Add button on the customer's phone at once. Closing the store blocks ordering with a friendly message.

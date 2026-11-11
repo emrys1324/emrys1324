@@ -5,12 +5,14 @@ import { getSupabase } from "@/lib/supabase/client";
 import { formatPeso, ORDER_TYPE_LABEL, PAYMENT_STATUS_LABEL, STATUS_LABEL } from "@/lib/format";
 import { formatDateTime, formatTime } from "@/lib/hours";
 import type { Order, OrderStatus, Rider } from "@/lib/types";
+import { useStaffRole } from "./StaffRole";
 import { MapView } from "@/components/map/MapView";
 import { googleMapsPin, toLatLng } from "@/lib/maps";
 
 const REJECT_REASONS = ["Item not available", "Outside our delivery area", "GCash payment not received", "We're about to close", "Couldn't reach customer"];
 
 export function OrderDetail({ order, riders, onClose }: { order: Order | null; riders: Rider[]; onClose: () => void }) {
+  const role = useStaffRole();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [proofUrl, setProofUrl] = useState<string | null>(null);
@@ -261,7 +263,7 @@ export function OrderDetail({ order, riders, onClose }: { order: Order | null; r
               {o.payment_status === "paid" && o.status === "cancelled" && (
                 <>
                   <Alert tone="amber">This order is cancelled but was paid online. Refund the customer:</Alert>
-                  {btn(`Refund ${formatPeso(o.total)} to customer`, refund, "btn-danger")}
+                  {role === "admin" ? btn(`Refund ${formatPeso(o.total)} to customer`, refund, "btn-danger") : <p className="text-sm font-semibold text-red-800">Ask an admin to refund this order.</p>}
                 </>
               )}
               {o.payment_status === "paid" && o.status !== "cancelled" && <p className="text-coffee-600">To refund, cancel the order first.</p>}

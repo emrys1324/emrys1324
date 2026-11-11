@@ -8,17 +8,20 @@ import { enableAccountPush, isNativeApp, signOutAndGo } from "@/lib/native";
 import { useLogo, useStoreSettings } from "@/lib/store-settings";
 import { formatHours } from "@/lib/hours";
 import { DEFAULT_STAFF_HEADER, headerTheme, headerVars, isHex } from "@/lib/color";
+import { StaffRoleProvider, type StaffRole } from "./StaffRole";
 
-const NAV = [
-  { href: "/admin", label: "Orders" },
+const NAV: { href: string; label: string; staff?: boolean }[] = [
+  { href: "/admin", label: "Orders", staff: true },
+  { href: "/admin/stock", label: "Sold out", staff: true },
   { href: "/admin/menu", label: "Menu" },
   { href: "/admin/options", label: "Options" },
   { href: "/admin/zones", label: "Zones" },
   { href: "/admin/summary", label: "Summary" },
+  { href: "/admin/staff", label: "Staff" },
   { href: "/admin/settings", label: "Settings" },
 ];
 
-export function AdminShell({ email, children }: { email: string; children: React.ReactNode }) {
+export function AdminShell({ email, role, children }: { email: string; role: StaffRole; children: React.ReactNode }) {
   const path = usePathname();
   const { settings, open } = useStoreSettings();
   const logo = useLogo();
@@ -62,7 +65,9 @@ export function AdminShell({ email, children }: { email: string; children: React
                 </span>
                 <span className="block text-xs text-coffee-200">{formatHours(settings)}</span>
               </span>
-              <Toggle checked={settings.is_open} onChange={toggleOpen} disabled={busy} label="Store open for orders" />
+              {role === "admin" ? (
+                <Toggle checked={settings.is_open} onChange={toggleOpen} disabled={busy} label="Store open for orders" />
+              ) : null}
             </label>
           )}
           <button
@@ -74,7 +79,7 @@ export function AdminShell({ email, children }: { email: string; children: React
           </button>
         </div>
         <nav className="no-scrollbar mx-auto flex max-w-7xl gap-1 overflow-x-auto px-2 pb-2" aria-label="Admin">
-          {NAV.map((n) => {
+          {NAV.filter((n) => role === "admin" || n.staff).map((n) => {
             const active = n.href === "/admin" ? path === "/admin" : path.startsWith(n.href);
             return (
               <Link
@@ -101,7 +106,7 @@ export function AdminShell({ email, children }: { email: string; children: React
             Notifications are off for Isla, so you won&apos;t be alerted to new orders while the app is closed. Turn them on in your phone&apos;s Settings → Apps → Isla → Notifications.
           </p>
         )}
-        {children}
+        <StaffRoleProvider value={role}>{children}</StaffRoleProvider>
       </main>
     </div>
   );
