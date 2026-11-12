@@ -225,6 +225,11 @@ async function payGcash(page, ref = "1012 345 678901") {
   await sheet.getByRole("button", { name: "Mark returned" }).click();
   await until(() => sql(`select status from rental_bookings where booking_number='${bookingNo}'`) === "returned", "returned");
   assert(true, "pickup → balance collected → return");
+  await cust2.goto(BASE + "/baybayin");
+  await setTimes(cust2, ymd(3), "12:00", ymd(5), "12:00");
+  await until(async () => (await cust2.getByRole("radio", { name: "Honda Click 125", exact: true }).count()) === 1, "Honda free after return");
+  await cust2.getByRole("radio", { name: "Honda Click 125", exact: true }).click();
+  assert((await cust2.getByTestId("availability-calendar").locator(`[data-day="${mid}"]`).getAttribute("data-tone")) === "free", "once marked returned, the scooter is open for booking again right away (times + calendar)");
   await admin.keyboard.press("Escape");
 
   // ---------- staff reject a payment ----------
