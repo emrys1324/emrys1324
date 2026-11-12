@@ -8,6 +8,10 @@ export const metadata = { title: "Staff — Pahuway Cafe" };
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const session = await getSessionRole();
   if (!session) redirect("/login?next=/admin");
-  if (session.role !== "admin") redirect("/login?denied=1");
-  return <AdminShell email={session.email ?? ""}>{children}</AdminShell>;
+  if (session.perms.length === 0) redirect("/login?denied=1");
+  return (
+    <AdminShell email={session.email ?? ""} perms={session.perms} isAdmin={session.role === "admin"}>
+      {children}
+    </AdminShell>
+  );
 }

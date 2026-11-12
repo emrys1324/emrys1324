@@ -8,19 +8,13 @@ import { enableAccountPush, isNativeApp, signOutAndGo } from "@/lib/native";
 import { useLogo, useStoreSettings } from "@/lib/store-settings";
 import { formatHours } from "@/lib/hours";
 import { DEFAULT_STAFF_HEADER, headerTheme, headerVars, isHex } from "@/lib/color";
+import { StaffAccessProvider } from "./StaffAccess";
+import { STAFF_PAGES, canOpen, type Perm } from "@/lib/permissions";
 
-const NAV = [
-  { href: "/admin", label: "Orders" },
-  { href: "/admin/menu", label: "Menu" },
-  { href: "/admin/options", label: "Options" },
-  { href: "/admin/zones", label: "Zones" },
-  { href: "/admin/summary", label: "Summary" },
-  { href: "/admin/settings", label: "Settings" },
-];
-
-export function AdminShell({ email, children }: { email: string; children: React.ReactNode }) {
+export function AdminShell({ email, perms, isAdmin, children }: { email: string; perms: Perm[]; isAdmin: boolean; children: React.ReactNode }) {
+  const canSwitch = perms.includes("open_close") || perms.includes("settings");
   const path = usePathname();
-  const { settings, open } = useStoreSettings();
+  const { settings, open, setLocal } = useStoreSettings();
   const logo = useLogo();
   const staffTheme = headerTheme(isHex(settings?.staff_header_color) ? settings.staff_header_color : DEFAULT_STAFF_HEADER);
   const staffTitle = settings?.staff_title?.trim() || "Pahuway Staff";
@@ -35,7 +29,8 @@ export function AdminShell({ email, children }: { email: string; children: React
 
   const toggleOpen = async (v: boolean) => {
     setBusy(true);
-    await getSupabase().from("store_settings").update({ is_open: v }).eq("id", 1);
+    const { error } = await getSupabase().rpc("set_store_open", { p_open: v });
+    if (!error) setLocal({ is_open: v }); // don't wait for the live update to flip the switch
     setBusy(false);
   };
 
@@ -62,7 +57,9 @@ export function AdminShell({ email, children }: { email: string; children: React
                 </span>
                 <span className="block text-xs text-coffee-200">{formatHours(settings)}</span>
               </span>
-              <Toggle checked={settings.is_open} onChange={toggleOpen} disabled={busy} label="Store open for orders" />
+              {canSwitch ? (
+                <Toggle checked={settings.is_open} onChange={toggleOpen} disabled={busy} label="Store open for orders" />
+              ) : null}
             </label>
           )}
           <button
@@ -74,7 +71,7 @@ export function AdminShell({ email, children }: { email: string; children: React
           </button>
         </div>
         <nav className="no-scrollbar mx-auto flex max-w-7xl gap-1 overflow-x-auto px-2 pb-2" aria-label="Admin">
-          {NAV.map((n) => {
+          {STAFF_PAGES.filter((n) => canOpen(perms, n)).map((n) => {
             const active = n.href === "/admin" ? path === "/admin" : path.startsWith(n.href);
             return (
               <Link
@@ -101,7 +98,7 @@ export function AdminShell({ email, children }: { email: string; children: React
             Notifications are off for Isla, so you won&apos;t be alerted to new orders while the app is closed. Turn them on in your phone&apos;s Settings → Apps → Isla → Notifications.
           </p>
         )}
-        {children}
+        <StaffAccessProvider value={{ perms, isAdmin }}>{children}</StaffAccessProvider>
       </main>
     </div>
   );

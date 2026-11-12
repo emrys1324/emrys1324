@@ -23,11 +23,17 @@ export function LoginForm() {
     const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
     if (error || !data.user) {
       setBusy(false);
-      return setError(error?.message === "Invalid login credentials" ? "Wrong email or password." : error?.message ?? "Sign-in failed.");
+      return setError(
+        error?.message === "Invalid login credentials"
+          ? "Wrong email or password."
+          : /banned/i.test(error?.message ?? "")
+            ? "This login has been switched off. Please ask the café admin."
+            : error?.message ?? "Sign-in failed.",
+      );
     }
     const { data: profile } = await supabase.from("users").select("role").eq("id", data.user.id).single();
     const role = profile?.role ?? "customer";
-    const dest = next && next.startsWith("/") && !next.startsWith("//") ? next : role === "admin" ? "/admin" : role === "rider" ? "/rider" : "/account";
+    const dest = next && next.startsWith("/") && !next.startsWith("//") ? next : role === "admin" || role === "staff" ? "/admin" : role === "rider" ? "/rider" : "/account";
     router.replace(dest);
     router.refresh();
   };

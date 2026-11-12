@@ -207,7 +207,7 @@ function Profile({ user }: { user: User }) {
         </button>
       </div>
 
-      {profile.role === "admin" && (
+      {(profile.role === "admin" || profile.role === "staff") && (
         <Link href="/admin" className="btn-primary w-full">
           Go to staff dashboard
         </Link>
