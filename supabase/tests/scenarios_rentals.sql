@@ -136,4 +136,21 @@ update rental_settings set terms = 'New terms v2';
 reset role; select pg_temp.as_user('');
 select pg_temp.check((select terms from rental_settings) = 'New terms v2' and (select terms_snapshot from rental_bookings where public_token = (select t from tok)) like '1. Bring%', 'staff can edit the terms; existing bookings keep the version the customer agreed to');
 
+-- overdue: picked up, past its return (+ turnaround), not returned → blocked for every date until returned
+reset role; select pg_temp.as_user('');
+insert into rental_bookings (scooter_id, scooter_name, customer_name, customer_phone, start_date, end_date, pickup_at, return_at, blocked_until,
+                             days, daily_rate, total, deposit_amount, license_path, status, payment_status)
+values ('a1000000-0000-0000-0000-000000000002', 'Yamaha Mio', 'Late Larry', '09170000009', current_date - 2, current_date - 1,
+        now() - interval '2 days', now() - interval '1 day', now() - interval '1 day' + interval '30 minutes', 1, 400, 400, 120, 'licenses/x.jpg', 'picked_up', 'deposit_paid');
+select pg_temp.check((select count(*) from busy_scooters(now() + interval '60 days', now() + interval '61 days') where busy_scooters = 'a1000000-0000-0000-0000-000000000002') = 1, 'an overdue scooter shows as unavailable, even for dates weeks ahead');
+select pg_temp.check((select max(blocked_until) > now() + interval '300 days' from scooter_calendar(current_date, current_date + 90) where scooter_id = 'a1000000-0000-0000-0000-000000000002'), 'the calendar greys out the overdue scooter for every day');
+set role anon;
+select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 600, 610))$q$, 'is not back yet');
+reset role;
+update rental_bookings set status = 'returned' where customer_name = 'Late Larry';
+select pg_temp.check((select count(*) from busy_scooters(now() + interval '60 days', now() + interval '61 days') where busy_scooters = 'a1000000-0000-0000-0000-000000000002') = 0, 'once marked returned, the scooter is free again');
+set role anon;
+select pg_temp.check((book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 600, 610))->>'days')::int = 1, 'and it can be booked again');
+reset role;
+
 select 'ALL RENTAL SCENARIOS PASSED';
