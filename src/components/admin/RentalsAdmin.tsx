@@ -43,6 +43,7 @@ interface Booking {
 }
 type Tab = "bookings" | "scooters" | "settings";
 const CANCEL_REASONS = ["Customer cancelled", "Scooter not available (repair)", "No-show at pickup", "Couldn't verify license"];
+const SMS_LABEL: Record<string, string> = { confirmed: "Booking confirmed", reminder: "Pickup reminder", cancelled: "Cancelled", refunded: "Deposit refunded", staff_alert: "Staff alert" };
 
 export function RentalsAdmin() {
   const [tab, setTab] = useState<Tab>("bookings");
@@ -159,12 +160,21 @@ function BookingSheet({ booking: b, onClose, onChanged }: { booking: Booking | n
   const [error, setError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const [reason, setReason] = useState("");
+  const [texts, setTexts] = useState<{ id: number; kind: string; to_number: string; status: string; error: string | null; created_at: string }[]>([]);
+  const [note, setNote] = useState<string | null>(null);
+  const loadTexts = useCallback(async () => {
+    if (!b) return;
+    const { data } = await getSupabase().from("rental_sms_log").select("id, kind, to_number, status, error, created_at").eq("booking_id", b.id).order("created_at");
+    setTexts(data ?? []);
+  }, [b?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     setLicense(null);
     setError(null);
+    setNote(null);
     setCancelling(false);
     if (!b) return;
+    loadTexts();
     getSupabase()
       .storage.from("license-photos")
       .createSignedUrl(b.license_path, 600)
@@ -172,11 +182,18 @@ function BookingSheet({ booking: b, onClose, onChanged }: { booking: Booking | n
   }, [b?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!b) return null;
+  const sms = async (kind: string, resend = false) => {
+    const res = await fetch("/api/rentals/sms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ booking_id: b.id, kind, resend }) });
+    const j = await res.json().catch(() => ({}));
+    setNote(res.ok ? (j.sent ? "Text sent to the customer." : j.skipped === "SMS turned off" ? "Texts are turned off in Settings." : null) : j.error ?? "The text couldn't be sent.");
+    loadTexts();
+  };
   const update = async (label: string, patch: Partial<Booking>) => {
     setBusy(label);
     setError(null);
     const { error } = await getSupabase().from("rental_bookings").update(patch).eq("id", b.id);
     if (error) setError(error.message);
+    else if (patch.status === "cancelled") await sms("cancelled");
     setBusy(null);
     onChanged();
   };
@@ -189,6 +206,7 @@ function BookingSheet({ booking: b, onClose, onChanged }: { booking: Booking | n
     if (!res.ok) setError(j.error ?? "Refund failed.");
     setBusy(null);
     onChanged();
+    loadTexts();
   };
   const paid = ["deposit_paid", "paid"].includes(b.payment_status);
   const btn = (label: string, fn: () => void, cls = "btn-primary") => (
@@ -267,6 +285,38 @@ function BookingSheet({ booking: b, onClose, onChanged }: { booking: Booking | n
             )}
             <p className="hint">Check the name matches and the license isn&apos;t expired at pickup.</p>
           </div>
+        </div>
+        <div className="rounded-2xl bg-white p-3" data-testid="sms-log">
+          <p className="mb-1 text-sm font-bold">Text messages</p>
+          {texts.length === 0 ? (
+            <p className="text-sm text-coffee-600">None yet.</p>
+          ) : (
+            <ul className="space-y-1 text-sm">
+              {texts.map((t) => (
+                <li key={t.id} className="flex flex-wrap items-center gap-2">
+                  <Badge tone={t.status === "sent" ? "green" : t.status === "skipped" ? "gray" : "red"}>{t.status}</Badge>
+                  <span className="font-semibold">{SMS_LABEL[t.kind] ?? t.kind}</span>
+                  <span className="text-coffee-700">
+                    to {t.to_number} · {formatDateTime(t.created_at)}
+                  </span>
+                  {t.error && <span className="w-full text-xs text-red-700">{t.error}</span>}
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="mt-2 flex flex-wrap gap-2">
+            {["confirmed", "picked_up", "returned"].includes(b.status) && (
+              <button className="btn-secondary btn-sm" onClick={() => sms("confirmed", true)}>
+                Resend confirmation
+              </button>
+            )}
+            {b.status === "cancelled" && (
+              <button className="btn-secondary btn-sm" onClick={() => sms("cancelled", true)}>
+                Resend cancellation
+              </button>
+            )}
+          </div>
+          {note && <p className="mt-1 text-sm text-coffee-700">{note}</p>}
         </div>
         {error && <Alert>{error}</Alert>}
         <div className="space-y-2">
@@ -418,6 +468,9 @@ function ScootersTab() {
 function SettingsTab() {
   const [s, setS] = useState<RentalSettings | null>(null);
   const [hitpay, setHitpay] = useState<{ configured: boolean; testMode: boolean } | null>(null);
+  const [smsStatus, setSmsStatus] = useState<{ configured: boolean; sender: string | null } | null>(null);
+  const [testPhone, setTestPhone] = useState("");
+  const [testMsg, setTestMsg] = useState<{ tone: "red" | "green"; text: string } | null>(null);
   const [scooterCount, setScooterCount] = useState(0);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ tone: "red" | "green"; text: string } | null>(null);
@@ -425,6 +478,10 @@ function SettingsTab() {
     const db = getSupabase();
     db.from("rental_settings").select("*").eq("id", 1).single().then(({ data }) => setS(data as RentalSettings));
     db.from("scooters").select("id", { count: "exact", head: true }).eq("is_active", true).then(({ count }) => setScooterCount(count ?? 0));
+    fetch("/api/rentals/sms")
+      .then((r) => r.json())
+      .then(setSmsStatus)
+      .catch(() => setSmsStatus({ configured: false, sender: null }));
     fetch("/api/payments/status")
       .then((r) => r.json())
       .then(setHitpay)
@@ -449,6 +506,9 @@ function SettingsTab() {
         max_days: Math.min(90, Math.max(1, Number(s.max_days) || 30)),
         grace_minutes: Math.min(240, Math.max(0, Number(s.grace_minutes) || 0)),
         turnaround_minutes: Math.min(240, Math.max(0, Number(s.turnaround_minutes) || 0)),
+        sms_enabled: !!s.sms_enabled,
+        staff_alert_phones: s.staff_alert_phones?.trim() || null,
+        reminder_hours: Math.min(24, Math.max(1, Number(s.reminder_hours) || 3)),
       })
       .eq("id", 1);
     setBusy(false);
@@ -526,6 +586,56 @@ function SettingsTab() {
           Pickup instructions
         </label>
         <input id="pickup-note" className="input" value={s.pickup_note ?? ""} onChange={(e) => set("pickup_note", e.target.value)} maxLength={200} placeholder="At Pahuway Cafe, Poblacion — 8 AM to 6 PM" />
+      </div>
+      <div className="space-y-3 border-t border-coffee-100 pt-4" data-testid="sms-settings">
+        <label className="flex items-center justify-between gap-3">
+          <span>
+            <span className="block font-bold">Text messages (SMS)</span>
+            <span className="text-sm text-coffee-700">Booking confirmed, pickup reminder, cancelled and deposit refunded — to the customer; plus a new-booking alert to staff. Sent through Semaphore.</span>
+          </span>
+          <Toggle checked={!!s.sms_enabled} onChange={(v) => set("sms_enabled", v)} label="Send text messages" />
+        </label>
+        {smsStatus && !smsStatus.configured && (
+          <p className="rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-900">Not set up yet: add your Semaphore API key to the website&apos;s server settings (SEMAPHORE_API_KEY on Vercel, see docs/RENTALS.md). Until then no texts are sent; bookings still work.</p>
+        )}
+        {smsStatus?.configured && <p className="text-sm text-sage-700">Semaphore is connected{smsStatus.sender ? ` · sender name ${smsStatus.sender}` : " · default sender name"}.</p>}
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <label className="label" htmlFor="staff-alert-phones">
+              Staff alert number(s)
+            </label>
+            <input id="staff-alert-phones" className="input" value={s.staff_alert_phones ?? ""} onChange={(e) => set("staff_alert_phones", e.target.value)} placeholder="09171234567, 09181234567" />
+            <p className="hint">Texted when a booking is confirmed. Empty = no staff alert.</p>
+          </div>
+          <div>
+            <label className="label" htmlFor="reminder-hours">
+              Pickup reminder (hours before)
+            </label>
+            <input id="reminder-hours" className="input" inputMode="numeric" {...num("reminder_hours")} />
+            <p className="hint">1–24. Not sent for bookings made less than 30 minutes before.</p>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-end gap-2">
+          <div className="flex-1">
+            <label className="label" htmlFor="test-phone">
+              Send a test text to
+            </label>
+            <input id="test-phone" className="input" inputMode="numeric" value={testPhone} onChange={(e) => setTestPhone(e.target.value)} placeholder="09XXXXXXXXX" />
+          </div>
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={async () => {
+              setTestMsg(null);
+              const res = await fetch("/api/rentals/sms-test", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phone: testPhone }) });
+              const j = await res.json().catch(() => ({}));
+              setTestMsg(res.ok ? { tone: "green", text: `Test text sent to ${testPhone}. It should arrive within a minute.` } : { tone: "red", text: j.error ?? "Couldn't send the test text." });
+            }}
+          >
+            Send test text
+          </button>
+        </div>
+        {testMsg && <Alert tone={testMsg.tone}>{testMsg.text}</Alert>}
       </div>
       <button className="btn-primary w-full" disabled={busy}>
         {busy ? <Spinner /> : "Save rental settings"}

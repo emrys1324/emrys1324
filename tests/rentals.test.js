@@ -1,12 +1,15 @@
 // Baybayin scooter rentals end to end: admin adds scooters and opens bookings; customers book by the day,
 // upload a license, pay the deposit on (mock) HitPay; double-booking is blocked; staff run pickup/return,
 // cancel + refund; unpaid bookings can resume payment; switching bookings off shows Coming soon again.
-// Start the app with:  HITPAY_API_KEY=hp_e2e HITPAY_SALT=salt_e2e HITPAY_API_BASE=http://127.0.0.1:4010 npx next start -p 3000
+// Start the app with:
+//   HITPAY_API_KEY=hp_e2e HITPAY_SALT=salt_e2e HITPAY_API_BASE=http://127.0.0.1:4010 \
+//   SEMAPHORE_API_KEY=sm_test SEMAPHORE_API_BASE=http://127.0.0.1:4020 NEXT_PUBLIC_SITE_URL=http://localhost:3000 npx next start -p 3000
 // Run: npm run test:rentals
 const { chromium, devices } = require("playwright");
 const { execFileSync } = require("child_process");
 const path = require("path");
 const { startMockHitpay } = require("./mock-hitpay");
+const { startMockSemaphore } = require("./mock-semaphore");
 const BASE = process.env.BASE_URL || "http://localhost:3000";
 const F = (n) => path.join(__dirname, "fixtures", n);
 const sql = (q) => execFileSync("docker", ["exec", "-i", "supabase_db_pahuway-cafe", "psql", "-U", "postgres", "-Atc", q]).toString().trim();
@@ -47,6 +50,9 @@ async function book(page, { scooter, start, end, startTime = "09:00", endTime = 
 (async () => {
   sql("delete from rental_bookings; delete from scooters; update rental_settings set bookings_enabled = false, deposit_percent = 30, security_deposit = 0, security_deposit_note = null, delivery_fee = 0, pickup_note = null, max_days = 30;");
   const mock = await startMockHitpay({ port: 4010, salt: "salt_e2e", apiKey: "hp_e2e" });
+  const sms = await startMockSemaphore({ port: 4020, apiKey: "sm_test" });
+  const textsTo = (n, re) => sms.messages.filter((m) => m.number === n && (!re || re.test(m.message)));
+  sql("delete from rental_sms_log; update rental_settings set sms_enabled = true, staff_alert_phones = null, reminder_hours = 3;");
   const browser = await chromium.launch();
   const phone = devices["iPhone 13"];
 
@@ -87,6 +93,12 @@ async function book(page, { scooter, start, end, startTime = "09:00", endTime = 
   await admin.locator("#security-note").fill("or leave a valid ID");
   await admin.locator("#pickup-note").fill("At Pahuway Cafe, Poblacion — 8 AM to 6 PM");
   assert((await admin.locator("#grace-minutes").inputValue()) === "60" && (await admin.locator("#turnaround-minutes").inputValue()) === "30", "settings: late-return grace (60 min) and time between bookings (30 min)");
+  await admin.getByText("Semaphore is connected").waitFor();
+  await admin.locator("#staff-alert-phones").fill("09170000001");
+  await admin.locator("#test-phone").fill("0917 123 4567");
+  await admin.getByRole("button", { name: "Send test text" }).click();
+  await admin.getByText("Test text sent to 0917 123 4567").waitFor();
+  assert(textsTo("09171234567").length === 1 && /^Baybayin: Hello! Text messages/.test(textsTo("09171234567")[0].message), "Settings → Send test text reaches Semaphore");
   await admin.getByRole("switch", { name: "Accept bookings" }).click();
   await admin.getByRole("button", { name: "Save rental settings" }).click();
   await admin.getByText("Rental settings saved.").waitFor();
@@ -116,6 +128,14 @@ async function book(page, { scooter, start, end, startTime = "09:00", endTime = 
   await cust.waitForURL(/\/baybayin\/booking\/[0-9a-f-]{36}\?paid=1/);
   await cust.getByText("You're booked! Deposit received ✓").waitFor({ timeout: 15000 });
   assert(sql(`select status||'|'||payment_status from rental_bookings where booking_number='${bookingNo}'`) === "confirmed|deposit_paid", "after paying: booking confirmed, deposit paid");
+  await until(() => textsTo("09171112222", /is confirmed/).length === 1 && textsTo("09170000001", /New booking/).length === 1, "confirmation + staff texts");
+  const conf = textsTo("09171112222", /is confirmed/)[0].message;
+  assert(conf.includes(bookingNo) && conf.includes("Honda Click 125") && /9:00AM to .*9:00AM/.test(conf) && conf.includes("Balance at pickup P805") && conf.includes("/baybayin/booking/"), `customer gets a confirmation text: "${conf}"`);
+  assert(/^[\x20-\x7E]+$/.test(conf), "texts use plain characters only (P805, not ₱) so they cost 1 SMS part per 160 chars");
+  const alert = textsTo("09170000001", /New booking/)[0].message;
+  assert(alert.includes("Ana Reyes 09171112222") && alert.includes("DELIVERY to Kamandag Beach Resort"), `staff get a new-booking alert: "${alert}"`);
+  await cust.waitForTimeout(1500);
+  assert(textsTo("09171112222", /is confirmed/).length === 1, "only one confirmation even though the webhook and the return-check both confirmed the deposit");
   assert((await cust.getByTestId("balance").textContent()) === "₱805", "booking page shows the balance due at pickup");
   assert(/Pickup:.*9:00\s?AM[\s\S]*Return by:.*9:00\s?AM/.test(await cust.getByTestId("booking-times").textContent()), "booking page shows the pickup and return times");
 
@@ -173,8 +193,14 @@ async function book(page, { scooter, start, end, startTime = "09:00", endTime = 
   await sheet.getByRole("button", { name: "Customer cancelled" }).click();
   await sheet.getByRole("button", { name: "Cancel booking" }).click();
   await sheet.getByText("Refund needed").waitFor();
+  await until(() => textsTo("09181234567", /has been cancelled/).length === 1, "cancellation text");
+  assert(/Reason: Customer cancelled\. Your deposit will be refunded\./.test(textsTo("09181234567", /cancelled/)[0].message), "cancelling texts the customer (with the reason and refund note)");
   await sheet.getByRole("button", { name: "Refund ₱120 deposit" }).click();
   await until(() => sql(`select payment_status from rental_bookings where booking_number='${no2}'`) === "refunded", "refunded");
+  await until(() => textsTo("09181234567", /P120 deposit .* has been refunded/).length === 1, "refund text");
+  assert(true, "refunding texts the customer");
+  await sheet.getByTestId("sms-log").getByText("Deposit refunded").waitFor();
+  assert((await sheet.getByTestId("sms-log").textContent()).includes("Cancelled"), "the booking shows its text log (cancelled, refunded)");
   assert(mock.refunds.some((r) => r.amount === "120.00"), "cancel + refund sends the ₱120 deposit back through HitPay");
   await cust2.reload();
   await cust2.getByText("Your deposit has been refunded.").waitFor();
@@ -192,8 +218,38 @@ async function book(page, { scooter, start, end, startTime = "09:00", endTime = 
   await cust3.waitForURL(new RegExp(`/checkout/${pr}$`));
   assert(true, "leaving HitPay unpaid: booking page offers Pay now, which resumes the same payment (no duplicate)");
 
-  // ---------- switch off ----------
+  // ---------- pickup reminder (via the 10-minute tick's route) ----------
   await admin.keyboard.press("Escape");
+  const cust4 = await (await browser.newContext(phone)).newPage();
+  await cust4.goto(BASE + "/baybayin");
+  await cust4.getByRole("heading", { name: "Rent a scooter" }).waitFor();
+  // pickup at the next half hour at least 30 min from now (Manila), back 2 hours later
+  const slot = new Date(Math.ceil((Date.now() + 30 * 60000) / 1800000) * 1800000);
+  const parts = (d) => Object.fromEntries(new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(d).map((p) => [p.type, p.value]));
+  const a = parts(slot), z = parts(new Date(slot.getTime() + 2 * 3600000));
+  await setTimes(cust4, `${a.year}-${a.month}-${a.day}`, `${a.hour}:${a.minute}`, `${z.year}-${z.month}-${z.day}`, `${z.hour}:${z.minute}`);
+  await cust4.getByRole("radio", { name: "Yamaha Mio", exact: true }).click();
+  await cust4.locator("#renter-name").fill("Dino Ramos");
+  await cust4.locator("#renter-phone").fill("09201234567");
+  await cust4.setInputFiles("input[aria-label=\"Driver's license photo\"]", F("test-background.png"));
+  await cust4.getByRole("button", { name: /Pay ₱\d+ deposit/ }).click();
+  await cust4.waitForURL(/127\.0\.0\.1:4010\/checkout/);
+  await cust4.getByRole("button", { name: "Pay with GCash" }).click();
+  await cust4.getByText("You're booked! Deposit received ✓").waitFor({ timeout: 15000 });
+  const key = sql("select value from private.app_config where key = 'cron_key'");
+  const tick = (k) => fetch(BASE + "/api/rentals/reminders", { method: "POST", headers: { "x-cron-key": k } });
+  assert((await tick("wrong")).status === 403, "reminder endpoint refuses calls without the database's key");
+  let j = await (await tick(key)).json();
+  assert(j.sent === 0 && textsTo("09201234567", /Reminder/).length === 0, "no reminder for a booking made minutes before pickup (the confirmation is enough)");
+  sql("update rental_bookings set deposit_paid_at = now() - interval '2 hours' where customer_name = 'Dino Ramos'");
+  j = await (await tick(key)).json();
+  await until(() => textsTo("09201234567", /Reminder/).length === 1, "reminder text");
+  const rem = textsTo("09201234567", /Reminder/)[0].message;
+  assert(j.sent === 1 && rem.includes("pickup at") && rem.includes("Pickup: At Pahuway Cafe") && rem.includes("security deposit"), `pickup reminder sent within 3 hours of pickup: "${rem}"`);
+  await tick(key);
+  assert(textsTo("09201234567", /Reminder/).length === 1, "each reminder is sent once");
+
+  // ---------- switch off ----------
   await admin.getByRole("tab", { name: "settings" }).click();
   await admin.getByRole("switch", { name: "Accept bookings" }).click();
   await admin.getByRole("button", { name: "Save rental settings" }).click();
@@ -204,6 +260,7 @@ async function book(page, { scooter, start, end, startTime = "09:00", endTime = 
 
   await browser.close();
   mock.server.close();
+  sms.server.close();
   sql("delete from rental_bookings; delete from scooters; update rental_settings set bookings_enabled = false;");
   console.log("\nAll rental checks passed.");
 })().catch((e) => {

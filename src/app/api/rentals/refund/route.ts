@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSessionRole } from "@/lib/supabase/server";
 import { getAdminSupabase } from "@/lib/supabase/admin";
 import { refundPayment } from "@/lib/hitpay";
+import { sendBookingSms } from "@/lib/rental-sms";
 
 /** Refunds a cancelled booking's online deposit (HitPay). Needs Rentals + Refunds. Body: { booking_id } */
 export const runtime = "nodejs";
@@ -22,6 +23,7 @@ export async function POST(req: Request) {
   try {
     const r = await refundPayment(b.gateway_payment_id, Number(b.deposit_amount));
     await db.from("rental_bookings").update({ payment_status: "refunded", gateway_refund_id: r.id }).eq("id", b.id);
+    await sendBookingSms(db, b.id, "refunded").catch((e) => console.error("refund SMS failed", e));
     return NextResponse.json({ ok: true, refund_status: r.status });
   } catch (e) {
     return NextResponse.json({ error: `${(e as Error).message}. If this payment method can't be refunded automatically, refund it from the HitPay dashboard.` }, { status: 502 });
