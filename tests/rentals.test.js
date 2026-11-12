@@ -68,7 +68,7 @@ async function payGcash(page, ref = "1012 345 678901") {
 }
 
 (async () => {
-  sql("delete from rental_bookings; delete from scooters; update rental_settings set bookings_enabled = false, terms = null, deposit_percent = 30, security_deposit = 0, security_deposit_note = null, delivery_fee = 0, pickup_note = null, max_days = 30;");
+  sql("delete from rental_bookings; delete from scooters; update rental_settings set bookings_enabled = false, terms = null, deposit_percent = 30, security_deposit = 0, security_deposit_note = null, delivery_fee = 0, pickup_note = null, max_days = 30, messenger_url = null, open_time = '08:00', close_time = '22:00';");
   sql("update store_settings set gcash_name = 'Pahuway Cafe', gcash_number = '0917 555 0000' where id = 1;");
   const sms = await startMockSemaphore({ port: 4020, apiKey: "sm_test" });
   const hp = await startMockHitpay({ port: 4010, salt: "salt_e2e", apiKey: "hp_e2e" });
@@ -118,6 +118,11 @@ async function payGcash(page, ref = "1012 345 678901") {
   await admin.locator("#security-deposit").fill("2000");
   await admin.locator("#security-note").fill("or leave a valid ID");
   await admin.locator("#pickup-note").fill("At Pahuway Cafe, Poblacion — 8 AM to 6 PM");
+  assert((await admin.locator("#rental-open").inputValue()) === "08:00" && (await admin.locator("#rental-close").inputValue()) === "22:00", "settings: pickup & return hours default to 8:00 AM – 10:00 PM");
+  await admin.locator("#messenger-url").fill("m.me/baybayin");
+  await admin.getByRole("button", { name: "Save rental settings" }).click();
+  await admin.getByText("The Messenger link must start with https://").waitFor();
+  await admin.locator("#messenger-url").fill("https://m.me/baybayin");
   await admin.getByText("Semaphore is connected").waitFor();
   await admin.locator("#staff-alert-phones").fill("09170000001");
   await admin.getByRole("switch", { name: "Accept bookings" }).click();
@@ -131,6 +136,17 @@ async function payGcash(page, ref = "1012 345 678901") {
   await cust.getByRole("heading", { name: "Rent a scooter" }).waitFor();
   assert(true, "with bookings on and terms written, the Baybayin page becomes the booking page");
   assert((await cust.getByLabel(/Deliver the scooter/).count()) === 0, "no delivery option — all bookings are pickup");
+  const opts = await cust.locator("#pickup-time option").allTextContents();
+  assert(opts[0] === "8:00 AM" && opts[opts.length - 1] === "10:00 PM" && opts.length === 29 && (await cust.locator("#return-time option").count()) === 29, "pickup and return times only from 8:00 AM to 10:00 PM");
+  assert((await cust.getByTestId("rental-hours").textContent()).includes("8:00 AM – 10:00 PM"), "the hours are shown on the booking page");
+  await cust.getByLabel("I need a pickup or return outside 8:00 AM – 10:00 PM").check();
+  await cust.getByTestId("special-arrangement").waitFor();
+  const mhref = await cust.getByTestId("messenger-link").getAttribute("href");
+  assert(mhref.startsWith("https://m.me/baybayin?text=") && decodeURIComponent(mhref).includes("outside 8:00 AM – 10:00 PM"), "ticking 'outside hours' shows a Messenger button to the Baybayin page with a ready message");
+  assert((await cust.getByRole("heading", { name: "Choose a scooter" }).count()) === 0 && (await cust.getByRole("button", { name: /Book a scooter|deposit/ }).count()) === 0, "…and hides the online booking form (arrange by message instead)");
+  await cust.getByLabel("I need a pickup or return outside 8:00 AM – 10:00 PM").uncheck();
+  await cust.getByRole("heading", { name: "Choose a scooter" }).waitFor();
+  assert(true, "unticking brings the booking form back");
   await cust.getByTestId("availability-calendar").waitFor();
   assert((await cust.getByTestId("rental-terms").textContent()).includes("Fuel is the renter's responsibility"), "the owner's terms are shown on the booking page");
   assert((await cust.getByTestId("gcash-payment").count()) === 0 && (await cust.locator("#gcash-ref").count()) === 0, "the GCash payment form is hidden until the customer agrees to the terms");
@@ -316,6 +332,7 @@ async function payGcash(page, ref = "1012 345 678901") {
   await admin.keyboard.press("Escape");
 
   // ---------- pickup reminder (via the 10-minute tick's route) ----------
+  sql("update rental_settings set open_time = '00:00', close_time = '23:30'"); // the reminder test books ~1 hour from now, whatever the time
   const cust4 = await (await browser.newContext(phone)).newPage();
   await cust4.goto(BASE + "/baybayin");
   await cust4.getByRole("heading", { name: "Rent a scooter" }).waitFor();
@@ -342,6 +359,7 @@ async function payGcash(page, ref = "1012 345 678901") {
   assert(j.sent === 1 && rem.includes("pickup at") && rem.includes("Pickup: At Pahuway Cafe") && rem.includes("security deposit"), `pickup reminder sent within 3 hours of pickup: "${rem}"`);
   await tick(key);
   assert(textsTo("09201234567", /Reminder/).length === 1, "each reminder is sent once");
+  sql("update rental_settings set open_time = '08:00', close_time = '22:00'");
 
   // ---------- terms removed or switch off → Coming soon ----------
   sql("update rental_settings set terms = '  ' where id = 1");
@@ -361,7 +379,7 @@ async function payGcash(page, ref = "1012 345 678901") {
   await browser.close();
   sms.server.close();
   hp.server.close();
-  sql("delete from rental_bookings; delete from scooters; update rental_settings set bookings_enabled = false, terms = null, online_enabled = false;");
+  sql("delete from rental_bookings; delete from scooters; update rental_settings set bookings_enabled = false, terms = null, online_enabled = false, messenger_url = null, open_time = '08:00', close_time = '22:00';");
   console.log("\nAll rental checks passed.");
 })().catch((e) => {
   console.error(e);

@@ -32,6 +32,12 @@ export interface StoreSettings {
   baybayin_name?: string | null;
   baybayin_tagline?: string | null;
   baybayin_header_color?: string | null;
+  account_name?: string | null;
+  account_tagline?: string | null;
+  account_logo_url?: string | null;
+  account_header_color?: string | null;
+  account_title?: string | null;
+  account_subtitle?: string | null;
   site_icons?: Partial<Record<"32" | "180" | "192" | "512", string>> | null;
   background_url: string | null;
   background_fade: number;

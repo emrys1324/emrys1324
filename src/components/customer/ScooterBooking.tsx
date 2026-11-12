@@ -8,14 +8,17 @@ import { useStoreSettings } from "@/lib/store-settings";
 import { getSupabase } from "@/lib/supabase/client";
 import { formatPeso, friendlyError, normalizePhone } from "@/lib/format";
 import { resizeImage } from "@/lib/upload";
-import { addDays, getRecentBooking, hoursLabel, manilaDate, manilaInstant, nextPickupSlot, prettyDate, rentalDays24, saveRecentBooking, slotLabel, TIME_SLOTS, type RentalSettings, type Scooter } from "@/lib/rentals";
+import { addDays, getRecentBooking, hoursLabel, manilaDate, manilaInstant, nextPickupSlot, prettyDate, rentalDays24, rentalHours, rentalSlots, saveRecentBooking, slotLabel, type RentalSettings, type Scooter } from "@/lib/rentals";
 
 
 /** Baybayin booking (pickup only): calendar & times → scooter → details & license → agree to terms → GCash deposit receipt. */
 export function ScooterBooking({ rs, brandName }: { rs: RentalSettings; brandName: string }) {
   const today = manilaDate();
   const { settings } = useStoreSettings();
-  const first = useMemo(() => nextPickupSlot(), []);
+  const hours = rentalHours(rs);
+  const slots = useMemo(() => rentalSlots(hours.open, hours.close), [hours.open, hours.close]);
+  const first = useMemo(() => nextPickupSlot(hours.open, hours.close), []); // eslint-disable-line react-hooks/exhaustive-deps
+  const [special, setSpecial] = useState(false);
   const [start, setStart] = useState(first.date);
   const [startTime, setStartTime] = useState(first.time);
   const [end, setEnd] = useState(addDays(first.date, 1));
@@ -94,6 +97,7 @@ export function ScooterBooking({ rs, brandName }: { rs: RentalSettings; brandNam
 
   const errors: Record<string, string> = {};
   if (!validDates) errors.dates = pastPickup ? "That pickup time has passed. Please choose a later time." : "Return at least 1 hour after pickup.";
+  else if (!slots.includes(startTime) || !slots.includes(endTime)) errors.dates = `Pickup and return are from ${slotLabel(hours.open)} to ${slotLabel(hours.close)}. Tick the box below to arrange another time.`;
   else if (tooLong) errors.dates = `Rentals can be up to ${rs.max_days} days.`;
   if (!scooter) errors.scooter = "Choose a scooter.";
   if (name.trim().length < 2) errors.name = "Please enter your name.";
@@ -111,6 +115,7 @@ export function ScooterBooking({ rs, brandName }: { rs: RentalSettings; brandNam
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (special) return;
     setTried(true);
     setError(null);
     if (Object.keys(errors).length) {
@@ -209,7 +214,7 @@ export function ScooterBooking({ rs, brandName }: { rs: RentalSettings; brandNam
             <legend className="label">{label}</legend>
             <input id={`${id}-date`} aria-label={`${label} date`} type="date" className="input" min={min} max={addDays(today, 180)} value={d} onChange={(e) => setD(e.target.value)} />
             <select id={`${id}-time`} aria-label={`${label} time`} className="input w-32" value={t} onChange={(e) => setT(e.target.value)}>
-              {TIME_SLOTS.map((x) => (
+              {slots.map((x) => (
                 <option key={x} value={x}>
                   {slotLabel(x)}
                 </option>
@@ -229,8 +234,18 @@ export function ScooterBooking({ rs, brandName }: { rs: RentalSettings; brandNam
         ) : (
           <p className="error-text">{errors.dates}</p>
         )}
+        <p className="text-sm text-coffee-700" data-testid="rental-hours">
+          Pickup and return times: {slotLabel(hours.open)} – {slotLabel(hours.close)}.
+        </p>
+        <label className="flex items-start gap-3 font-medium">
+          <input type="checkbox" className="mt-0.5 h-5 w-5 shrink-0 accent-coffee-700" checked={special} onChange={(e) => setSpecial(e.target.checked)} />
+          I need a pickup or return outside {slotLabel(hours.open)} – {slotLabel(hours.close)}
+        </label>
+        {special && <SpecialArrangement rs={rs} brandName={brandName} phone={settings?.contact_phone ?? null} hours={hours} />}
       </section>
 
+      {!special && (
+        <>
       {/* 2 · Scooter */}
       <section className="card space-y-3 p-5" data-error={tried && !!errors.scooter}>
         <h2 className="section-title">Choose a scooter</h2>
@@ -453,6 +468,36 @@ export function ScooterBooking({ rs, brandName }: { rs: RentalSettings; brandNam
           </button>
         </div>
       </div>
+        </>
+      )}
     </form>
+  );
+}
+
+/** Shown instead of the booking form when the customer needs a time outside opening hours. */
+function SpecialArrangement({ rs, brandName, phone, hours }: { rs: RentalSettings; brandName: string; phone: string | null; hours: { open: string; close: string } }) {
+  const text = `Hi ${brandName}! I'd like to rent a scooter with a pickup or return outside ${slotLabel(hours.open)} – ${slotLabel(hours.close)}. Dates/times I need: `;
+  let href = rs.messenger_url || null;
+  if (href && /^https:\/\/(www\.)?m\.me\//.test(href)) href += (href.includes("?") ? "&" : "?") + "text=" + encodeURIComponent(text);
+  return (
+    <div className="space-y-3 rounded-2xl bg-sky-50 p-4 text-sm text-sky-950" data-testid="special-arrangement">
+      <p className="text-base font-semibold">Let&apos;s arrange it by message</p>
+      <p>
+        Online booking is for pickups and returns between {slotLabel(hours.open)} and {slotLabel(hours.close)}. For an earlier or later time, message {brandName} with the scooter, dates and times you need and we&apos;ll arrange it with you.
+      </p>
+      {href ? (
+        <a href={href} target="_blank" rel="noreferrer" className="btn-primary w-full" data-testid="messenger-link">
+          💬 Message {brandName} on Messenger
+        </a>
+      ) : (
+        <p className="font-semibold">Please message the {brandName} Facebook page{rs.pickup_note ? ` or drop by ${rs.pickup_note}` : ""}.</p>
+      )}
+      {phone && (
+        <a href={`tel:${phone}`} className="btn-secondary w-full">
+          📞 Call or text {phone}
+        </a>
+      )}
+      <p className="text-xs text-sky-900">Untick the box above to book online within the regular hours instead.</p>
+    </div>
   );
 }

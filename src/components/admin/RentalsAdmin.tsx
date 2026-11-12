@@ -6,7 +6,7 @@ import { getAuthedSupabase, getSupabase } from "@/lib/supabase/client";
 import { formatPeso } from "@/lib/format";
 import { formatDateTime } from "@/lib/hours";
 import { uploadPublicImage } from "@/lib/upload";
-import { BOOKING_STATUS_LABEL, PAYMENT_LABEL, addDays, manilaDate, manilaDateOf, monthGrid, monthLabel, prettyDateTime, prettyTime, touchesDay, type BookingStatus, type RentalSettings, type Scooter } from "@/lib/rentals";
+import { TIME_SLOTS, hhmm, slotLabel, BOOKING_STATUS_LABEL, PAYMENT_LABEL, addDays, manilaDate, manilaDateOf, monthGrid, monthLabel, prettyDateTime, prettyTime, touchesDay, type BookingStatus, type RentalSettings, type Scooter } from "@/lib/rentals";
 import { useStaffAccess } from "./StaffAccess";
 
 interface Booking {
@@ -659,13 +659,19 @@ function SettingsTab() {
   const ready = !!s.terms?.trim();
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
-    setBusy(true);
     setMsg(null);
+    if (hhmm(s.open_time, "08:00") >= hhmm(s.close_time, "22:00")) return setMsg({ tone: "red", text: "The latest pickup/return time must be after the earliest." });
+    const mu = s.messenger_url?.trim();
+    if (mu && !/^https:\/\/\S+$/.test(mu)) return setMsg({ tone: "red", text: "The Messenger link must start with https:// (for example https://m.me/YourPage)." });
+    setBusy(true);
     const { error } = await getSupabase()
       .from("rental_settings")
       .update({
         bookings_enabled: s.bookings_enabled && ready,
         terms: s.terms?.trim() || null,
+        open_time: hhmm(s.open_time, "08:00"),
+        close_time: hhmm(s.close_time, "22:00"),
+        messenger_url: s.messenger_url?.trim() || null,
         online_enabled: !!s.online_enabled && !!hitpay?.configured,
         deposit_percent: Math.min(100, Math.max(10, Number(s.deposit_percent) || 30)),
         security_deposit: Math.max(0, Number(s.security_deposit) || 0),
@@ -767,6 +773,38 @@ function SettingsTab() {
           {s.terms_updated_at ? ` · last changed ${formatDateTime(s.terms_updated_at)}` : ""}.
         </p>
       </div>
+      <fieldset className="space-y-3 rounded-2xl border border-coffee-100 p-4" data-testid="rental-hours-settings">
+        <legend className="px-1 font-bold">Pickup &amp; return hours</legend>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {(
+            [
+              ["open_time", "rental-open", "Earliest time", "08:00"],
+              ["close_time", "rental-close", "Latest time", "22:00"],
+            ] as const
+          ).map(([k, id, label, def]) => (
+            <div key={k}>
+              <label className="label" htmlFor={id}>
+                {label}
+              </label>
+              <select id={id} className="input" value={hhmm(s[k], def)} onChange={(e) => set(k, e.target.value)}>
+                {TIME_SLOTS.map((t) => (
+                  <option key={t} value={t}>
+                    {slotLabel(t)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ))}
+        </div>
+        <p className="hint">Customers can only choose pickup and return times in this range. Outside it, they tick &ldquo;I need a pickup or return outside these hours&rdquo; and message you instead.</p>
+        <div>
+          <label className="label" htmlFor="messenger-url">
+            Messenger link for special arrangements
+          </label>
+          <input id="messenger-url" className="input" inputMode="url" value={s.messenger_url ?? ""} onChange={(e) => set("messenger_url", e.target.value)} placeholder="https://m.me/YourBaybayinPage" />
+          <p className="hint">Your Facebook page&apos;s Messenger link (m.me/ + the page&apos;s username). Empty = customers are asked to message the Facebook page; the café phone from Settings is shown too.</p>
+        </div>
+      </fieldset>
       <div>
         <label className="label" htmlFor="pickup-note">
           Pickup instructions

@@ -15,6 +15,9 @@ export interface RentalSettings {
   turnaround_minutes: number;
   terms: string | null;
   online_enabled: boolean;
+  open_time: string; // "08:00:00" — earliest pickup/return
+  close_time: string; // "22:00:00" — latest pickup/return
+  messenger_url: string | null;
   terms_updated_at: string | null;
   sms_enabled: boolean;
   staff_alert_phones: string | null;
@@ -104,15 +107,23 @@ export function slotLabel(hhmm: string): string {
 }
 /** Epoch ms of a Manila local date + time. */
 export const manilaInstant = (ymd: string, hhmm: string) => Date.parse(`${ymd}T${hhmm}:00+08:00`);
-/** Next bookable slot: at least 30 min from now, rounded up to :00/:30 (tomorrow 9:00 AM if it's late). */
-export function nextPickupSlot(): { date: string; time: string } {
+/** "HH:MM" from a Postgres time ("08:00:00"), with a fallback. */
+export const hhmm = (t: string | null | undefined, fallback: string) => (t && /^\d{2}:\d{2}/.test(t) ? t.slice(0, 5) : fallback);
+/** Pickup/return hours from the rental settings (default 8:00 AM – 10:00 PM). */
+export const rentalHours = (rs: Pick<RentalSettings, "open_time" | "close_time"> | null | undefined) => ({ open: hhmm(rs?.open_time, "08:00"), close: hhmm(rs?.close_time, "22:00") });
+/** Half-hour slots a customer can pick for pickup/return. */
+export const rentalSlots = (open: string, close: string) => TIME_SLOTS.filter((t) => t >= open && t <= close);
+/** Next bookable slot within opening hours: at least 30 min from now, rounded up to :00/:30. */
+export function nextPickupSlot(open = "08:00", close = "22:00"): { date: string; time: string } {
   const t = Date.now() + 30 * 60_000;
   const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(t));
   const get = (k: string) => parts.find((p) => p.type === k)!.value;
   let mins = Number(get("hour")) * 60 + Number(get("minute"));
   mins = Math.ceil(mins / 30) * 30;
   const date = `${get("year")}-${get("month")}-${get("day")}`;
-  if (mins >= 21 * 60) return { date: addDays(date, 1), time: "09:00" };
+  const toMin = (x: string) => Number(x.slice(0, 2)) * 60 + Number(x.slice(3, 5));
+  if (mins > toMin(close)) return { date: addDays(date, 1), time: open };
+  if (mins < toMin(open)) return { date, time: open };
   return { date, time: TIME_SLOTS[mins / 30] };
 }
 /** Rental days in 24-hour blocks; going over by more than the grace period adds a day. */

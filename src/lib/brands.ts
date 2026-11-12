@@ -1,8 +1,9 @@
-// Three brands share this site: the welcome (home) page, Pahuway Cafe and Baybayin scooter rental.
+// Brands on this site: the welcome (home) page, Pahuway Cafe, Baybayin scooter rental, and the customer
+// account ("Welcome back") page.
 // Each has its own header title, tagline, logo and colour; unset values fall back sensibly.
 import type { StoreSettings } from "./types";
 
-export type BrandKey = "site" | "cafe" | "baybayin";
+export type BrandKey = "site" | "cafe" | "baybayin" | "account";
 export interface Brand {
   key: BrandKey;
   name: string;
@@ -22,6 +23,8 @@ export const DEFAULTS = {
   welcomeSubtitle: "What would you like to do today?",
   cafeCard: "Coffee, drinks & food · pickup, dine-in or delivery",
   baybayinCard: "Scooter rentals for getting around San Agustin. Check back soon!",
+  accountTitle: "Welcome back",
+  accountSubtitle: "Optional — save your address and see your past orders. You can always order as a guest.",
 };
 
 /** Text setting: null/undefined → fallback; blank names fall back too. */
@@ -39,6 +42,15 @@ export function brandOf(s: StoreSettings | null | undefined, key: BrandKey): Bra
     color: s?.header_color ?? null,
   };
   if (key === "cafe") return cafe;
+  if (key === "account")
+    return {
+      key: "account",
+      name: name(s?.account_name, cafe.name),
+      tagline: line(s?.account_tagline, cafe.tagline),
+      logo: s?.account_logo_url || cafe.logo,
+      emoji: "☕",
+      color: s?.account_header_color ?? cafe.color,
+    };
   if (key === "site")
     return {
       key: "site",
@@ -65,4 +77,9 @@ export function welcomeTexts(s: StoreSettings | null | undefined) {
     cafeCard: line(s?.cafe_card_text, DEFAULTS.cafeCard),
     baybayinCard: line(s?.baybayin_card_text, DEFAULTS.baybayinCard),
   };
+}
+
+/** Heading and line on the customer account page (sign-in shows the title; sign-up keeps "Create an account"). */
+export function accountTexts(s: StoreSettings | null | undefined) {
+  return { title: name(s?.account_title, DEFAULTS.accountTitle), subtitle: line(s?.account_subtitle, DEFAULTS.accountSubtitle) };
 }

@@ -196,6 +196,36 @@ const assert = (c, m) => {
   }
   assert(manifestOk, "web-app manifest lists the uploaded icon (192 + 512)");
 
+  // ---- Account ("Welcome back") page: own header, icon and heading
+  await cust.goto(BASE + "/account");
+  await cust.getByRole("heading", { name: "Welcome back" }).waitFor();
+  await admin.getByRole("tab", { name: "Account page" }).click();
+  await admin.setInputFiles("input[aria-label='Upload account page icon']", F("test-logo.png"));
+  await admin.getByText("Account page icon uploaded — press Save settings").waitFor();
+  const acctUrl = await admin.getByTestId("account-logo-preview").getAttribute("src");
+  await admin.locator("#account-name").fill("Pahuway Members");
+  await admin.locator("#account-tagline").fill("Your orders, saved");
+  await admin.getByRole("group", { name: "Account page header colour" }).getByRole("button", { name: "Use colour #1e3a5f" }).click();
+  await admin.locator("#account-title-input").fill("Mabuhay, suki!");
+  await admin.locator("#account-subtitle-input").fill("Sign in to see your past orders.");
+  assert((await admin.getByTestId("account-header-preview").textContent()).includes("Pahuway Members"), "account page header preview follows the edits");
+  await admin.getByRole("button", { name: "Save settings" }).click();
+  await admin.getByText("Settings saved.").waitFor();
+  await cust.goto(BASE + "/account");
+  await cust.getByRole("heading", { name: "Mabuhay, suki!" }).waitFor();
+  const aBg = await cust.getByTestId("customer-header").evaluate((el) => getComputedStyle(el).backgroundColor);
+  assert(
+    (await cust.getByTestId("store-title").textContent()).trim() === "Pahuway Members" && (await cust.getByTestId("brand-logo").getAttribute("src")) === acctUrl && aBg === "rgb(30, 58, 95)" && (await cust.getByText("Sign in to see your past orders.").count()) === 1,
+    "account page shows its own header title, icon, colour and sign-in heading",
+  );
+  await cust.goto(BASE + "/menu");
+  await cust.getByRole("heading", { name: "Coffee", exact: true }).waitFor();
+  assert((await cust.getByTestId("store-title").textContent()).trim() !== "Pahuway Members", "the café pages keep the café header");
+  for (const id of ["#account-name", "#account-tagline", "#account-title-input", "#account-subtitle-input"]) await admin.locator(id).fill("");
+  await admin.getByRole("button", { name: "Account page header colour: use default" }).click();
+  await admin.getByRole("button", { name: "Use the café logo" }).click();
+  await admin.getByRole("tab", { name: "Welcome page" }).click();
+
   // reset the welcome page + Baybayin branding
   for (const id of ["#site-name", "#site-tagline", "#welcome-title-input", "#welcome-subtitle-input", "#cafe-card-text", "#baybayin-card-text"]) await admin.locator(id).fill("");
   await admin.getByRole("button", { name: "Welcome page header colour: use default" }).click();
