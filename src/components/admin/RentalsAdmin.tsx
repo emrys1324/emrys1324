@@ -119,7 +119,7 @@ function BookingsTab() {
   );
   const today = manilaDate();
   const open = list?.find((b) => b.id === openId) ?? null;
-  const toCheck = (list ?? []).filter((b) => b.status === "awaiting_deposit" && !expired(b)).length;
+  const toCheck = (list ?? []).filter((b) => b.status === "awaiting_deposit" && b.payment_status === "for_verification").length;
 
   if (!list) return <PageLoader />;
   return (
@@ -128,7 +128,7 @@ function BookingsTab() {
         {(
           [
             ["active", "Confirmed & on the road"],
-            ["awaiting", `GCash to check${toCheck ? ` (${toCheck})` : ""}`],
+            ["awaiting", `GCash to check${toCheck ? ` (${toCheck})` : ""} & unpaid`],
             ["done", "Returned & cancelled"],
             ["all", "All"],
           ] as const
@@ -156,7 +156,7 @@ function BookingsTab() {
               </span>
               {overdue(b) && <Badge tone="red">Overdue</Badge>}
               <Badge tone={b.status === "cancelled" || expired(b) ? "red" : b.status === "awaiting_deposit" ? "amber" : b.status === "picked_up" ? "blue" : "green"}>
-                {expired(b) ? "Expired" : b.status === "awaiting_deposit" && b.payment_status === "for_verification" ? "GCash to check" : BOOKING_STATUS_LABEL[b.status]}
+                {expired(b) ? "Expired" : b.status === "awaiting_deposit" ? (b.payment_status === "for_verification" ? "GCash to check" : "Paying online…") : BOOKING_STATUS_LABEL[b.status]}
               </Badge>
             </button>
           </li>
@@ -633,6 +633,7 @@ function ScootersTab() {
 function SettingsTab() {
   const [s, setS] = useState<RentalSettings | null>(null);
   const [gcash, setGcash] = useState<{ number: string | null; qr: string | null } | null>(null);
+  const [hitpay, setHitpay] = useState<{ configured: boolean; testMode: boolean } | null>(null);
   const [smsStatus, setSmsStatus] = useState<{ configured: boolean; sender: string | null } | null>(null);
   const [testPhone, setTestPhone] = useState("");
   const [testMsg, setTestMsg] = useState<{ tone: "red" | "green"; text: string } | null>(null);
@@ -647,6 +648,10 @@ function SettingsTab() {
       .then((r) => r.json())
       .then(setSmsStatus)
       .catch(() => setSmsStatus({ configured: false, sender: null }));
+    fetch("/api/payments/status")
+      .then((r) => r.json())
+      .then(setHitpay)
+      .catch(() => setHitpay({ configured: false, testMode: false }));
     db.from("store_settings").select("gcash_number, gcash_qr_url").eq("id", 1).single().then(({ data }) => setGcash({ number: data?.gcash_number ?? null, qr: data?.gcash_qr_url ?? null }));
   }, []);
   if (!s) return <PageLoader />;
@@ -661,6 +666,7 @@ function SettingsTab() {
       .update({
         bookings_enabled: s.bookings_enabled && ready,
         terms: s.terms?.trim() || null,
+        online_enabled: !!s.online_enabled && !!hitpay?.configured,
         deposit_percent: Math.min(100, Math.max(10, Number(s.deposit_percent) || 30)),
         security_deposit: Math.max(0, Number(s.security_deposit) || 0),
         security_deposit_note: s.security_deposit_note?.trim() || null,
@@ -689,9 +695,18 @@ function SettingsTab() {
       </label>
       {!ready && <p className="rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-900" data-testid="terms-needed">Write your terms and conditions below and save — bookings can&apos;t open without them.</p>}
       {s.bookings_enabled && !s.terms?.trim() && <p className="text-sm text-amber-900">Bookings are switched on but stay closed (&ldquo;Coming soon&rdquo;) until terms are saved.</p>}
+      <label className="flex items-center justify-between gap-3" data-testid="rental-online-setting">
+        <span>
+          <span className="block font-bold">Online deposit (HitPay)</span>
+          <span className="text-sm text-coffee-700">On = customers can also pay the deposit online (GCash, Maya, QR Ph, online banking) and the booking confirms automatically. GCash with a receipt stays available.</span>
+        </span>
+        <Toggle checked={!!s.online_enabled && !!hitpay?.configured} onChange={(v) => set("online_enabled", v)} disabled={!hitpay?.configured} label="Online deposit (HitPay)" />
+      </label>
+      {hitpay && !hitpay.configured && <p className="rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-900">HitPay isn&apos;t set up on the website, so online deposits can&apos;t be switched on. See docs/PAYMENTS.md.</p>}
+      {hitpay?.configured && hitpay.testMode && <p className="rounded-2xl bg-sky-100 px-4 py-3 text-sm text-sky-900"><strong>Test mode:</strong> HitPay sandbox is active — deposits aren&apos;t real money.</p>}
       {gcash && (
         <p className="rounded-2xl bg-white px-4 py-3 text-sm text-coffee-800 ring-1 ring-coffee-100">
-          Deposits are paid to the café&apos;s GCash from <strong>Settings → Payments</strong>
+          GCash deposits are paid to the café&apos;s GCash from <strong>Settings → Payments</strong>
           {gcash.number ? ` (${gcash.number})` : ""}.{!gcash.qr && !gcash.number && <strong className="text-red-700"> No GCash number or QR is set there yet.</strong>}
         </p>
       )}

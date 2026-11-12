@@ -1,8 +1,9 @@
 "use client";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { StoreHeader } from "./Header";
-import { Alert, Badge, PageLoader } from "@/components/ui";
+import { Alert, Badge, PageLoader, Spinner } from "@/components/ui";
 import { getSupabase } from "@/lib/supabase/client";
 import { formatPeso } from "@/lib/format";
 import { useStoreSettings } from "@/lib/store-settings";
@@ -28,29 +29,68 @@ interface PublicBooking {
   deposit_amount: number;
   security_deposit: number;
   cancel_reason: string | null;
+  payment_expires_at: string | null;
 }
 
-/** A customer's booking, by its secret link. Shows whether staff have checked the GCash deposit yet. */
+/** A customer's booking, by its secret link. GCash: shows whether staff have checked it. Online: confirms with HitPay on return, offers Pay now. */
 export function BookingStatusScreen({ token }: { token: string }) {
   const { settings, open } = useStoreSettings();
   const rs = useRentalSettings();
+  const params = useSearchParams();
   const [b, setB] = useState<PublicBooking | null | undefined>(undefined);
+  const [verifying, setVerifying] = useState(false);
+  const [paying, setPaying] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [now, setNow] = useState(Date.now());
 
   const load = useCallback(async () => {
     const { data } = await getSupabase().rpc("get_booking_by_token", { p_token: token });
     setB((data as PublicBooking) ?? null);
+    return data as PublicBooking | null;
   }, [token]);
 
   useEffect(() => {
-    load();
+    let stop = false;
+    (async () => {
+      const first = await load();
+      // back from HitPay: confirm with HitPay (the webhook may be a few seconds behind)
+      if (params.get("paid") && first?.payment_status === "awaiting_payment") {
+        setVerifying(true);
+        const tries = params.get("status") === "completed" ? 10 : 2;
+        for (let i = 0; i < tries && !stop; i++) {
+          const r = await fetch("/api/rentals/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token }) }).then((x) => x.json()).catch(() => ({}));
+          const next = await load();
+          if (r.outcome === "paid" || r.outcome === "already_paid" || next?.payment_status !== "awaiting_payment") break;
+          if (i < tries - 1) await new Promise((res) => setTimeout(res, 3000));
+        }
+        setVerifying(false);
+      }
+    })();
+    const tick = setInterval(() => setNow(Date.now()), 1000);
     const poll = setInterval(load, 15000);
     const onFocus = () => load();
     window.addEventListener("focus", onFocus);
     return () => {
+      stop = true;
+      clearInterval(tick);
       clearInterval(poll);
       window.removeEventListener("focus", onFocus);
     };
-  }, [load]);
+  }, [load, params, token]);
+
+  const payNow = async () => {
+    setPaying(true);
+    setError(null);
+    const res = await fetch("/api/rentals/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token }) });
+    const j = await res.json().catch(() => ({}));
+    if (res.ok && j.url) {
+      window.location.href = j.url;
+      return;
+    }
+    setError(j.error ?? "We couldn't open the payment page. Please try again.");
+    setPaying(false);
+    load();
+  };
 
   if (b === undefined) return <PageLoader />;
   const header = <StoreHeader settings={settings} open={open} brand="baybayin" back="/baybayin" />;
@@ -70,6 +110,8 @@ export function BookingStatusScreen({ token }: { token: string }) {
 
   const paid = ["deposit_paid", "paid"].includes(b.payment_status);
   const checking = b.payment_status === "for_verification" && b.status === "awaiting_deposit";
+  const unpaidOnline = b.payment_method === "online" && b.payment_status === "awaiting_payment" && b.status === "awaiting_deposit" && !verifying;
+  const left = b.payment_expires_at ? Math.max(0, new Date(b.payment_expires_at).getTime() - now) : 0;
   const label = checking ? "Checking your GCash payment" : BOOKING_STATUS_LABEL[b.status];
 
   return (
@@ -89,6 +131,25 @@ export function BookingStatusScreen({ token }: { token: string }) {
           {b.status === "returned" && <p className="mt-3 text-lg">Thanks for riding with us!</p>}
         </section>
 
+        {verifying && (
+          <p className="flex items-center justify-center gap-2 text-coffee-700">
+            <Spinner /> Confirming your payment…
+          </p>
+        )}
+        {unpaidOnline && (
+          <section className="card space-y-3 p-5">
+            <Alert tone="amber">
+              <p className="text-base font-bold">Complete your deposit</p>
+              <p className="font-normal">
+                Pay {formatPeso(b.deposit_amount)} within {Math.floor(left / 60000)}:{String(Math.floor((left % 60000) / 1000)).padStart(2, "0")} to keep this booking. After that, the scooter is released for others.
+              </p>
+            </Alert>
+            <button className="btn-primary w-full" onClick={payNow} disabled={paying || left === 0}>
+              {paying ? <Spinner /> : `Pay ${formatPeso(b.deposit_amount)} now`}
+            </button>
+            {error && <Alert>{error}</Alert>}
+          </section>
+        )}
         {checking && (
           <Alert tone="amber">
             <p className="text-base font-bold">We&apos;re checking your GCash payment</p>
@@ -102,7 +163,7 @@ export function BookingStatusScreen({ token }: { token: string }) {
           <Alert>
             <p className="font-bold">This booking is cancelled.</p>
             {b.cancel_reason && <p className="font-normal">{b.cancel_reason}</p>}
-            {b.payment_status === "refunded" && <p className="font-normal">Your deposit has been sent back to you.</p>}
+            {b.payment_status === "refunded" && <p className="font-normal">{b.payment_method === "online" ? "Your deposit has been refunded." : "Your deposit has been sent back to you."}</p>}
           </Alert>
         )}
 
@@ -135,7 +196,7 @@ export function BookingStatusScreen({ token }: { token: string }) {
               <dd>{formatPeso(b.total)}</dd>
             </div>
             <div className="flex justify-between">
-              <dt>Deposit {paid ? "paid" : b.payment_method === "gcash" ? "sent by GCash (being checked)" : "(not paid)"}</dt>
+              <dt>Deposit {paid ? (b.payment_method === "online" ? "paid online" : "paid") : b.payment_status === "for_verification" ? "sent by GCash (being checked)" : "(not paid yet)"}</dt>
               <dd>{formatPeso(b.deposit_amount)}</dd>
             </div>
             {b.status !== "cancelled" && (

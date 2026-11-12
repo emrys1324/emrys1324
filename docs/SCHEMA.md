@@ -41,7 +41,7 @@ Payment status: `unpaid` (cash) · `for_verification` (manual GCash screenshot u
 ### Baybayin scooter rentals
 | Table | What it holds | Who can read / write |
 |---|---|---|
-| **rental_settings** | One row: Accept bookings switch, **terms** (+ last changed; bookings stay closed while empty), deposit %, security deposit (+ note), pickup note, longest rental, grace, turnaround, SMS settings. | Everyone reads · `rentals` writes |
+| **rental_settings** | One row: Accept bookings switch, online deposit (HitPay) switch, **terms** (+ last changed; bookings stay closed while empty), deposit %, security deposit (+ note), pickup note, longest rental, grace, turnaround, SMS settings. | Everyone reads · `rentals` writes |
 | **scooters** | Name, description, daily rate, photo, shown/hidden, order. | Everyone reads shown scooters · `rentals` writes |
 | **rental_bookings** | `BY-0001` number, secret link token, scooter (+ name copy), customer, pickup/return dates, days, rate, helmets, delivery + address + fee, total, online deposit, security deposit, private license photo path, notes, status (`awaiting_deposit → confirmed → picked_up → returned`, or `cancelled` with a reason), payment method (`gcash` / `online`), payment status (`for_verification` while staff check the GCash receipt), GCash reference + private receipt path, terms agreed time + copy of the terms, HitPay refs (older bookings), timestamps. A database rule (`no_double_booking`) prevents overlapping bookings per scooter. | `rentals` staff read/update · created only by `book_scooter()` |
 
