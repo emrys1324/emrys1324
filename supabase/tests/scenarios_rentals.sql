@@ -124,6 +124,13 @@ select pg_temp.check((select status = 'confirmed' and payment_status = 'deposit_
                       from rental_bookings where public_token = (select t from tok)), 'Rentals staff verify the GCash deposit → confirmed (time stamped); reference and price stay locked');
 update rental_bookings set status = 'picked_up' where public_token = (select t from tok);
 select pg_temp.check((select picked_up_at is not null from rental_bookings where public_token = (select t from tok)), 'marks picked up');
+update rental_bookings set status = 'returned' where public_token = (select t from tok);
+select pg_temp.check((select returned_at is not null and blocked_until = greatest(least(return_at + interval '30 minutes', now()), pickup_at + interval '1 minute') from rental_bookings where public_token = (select t from tok)), 'marking it returned frees the scooter right away (no longer blocked until the scheduled return)');
+reset role;
+select pg_temp.check((select count(*) from busy_scooters(((select t0 from d) + interval '2 hours') at time zone 'Asia/Manila', ((select t0 from d) + interval '4 hours') at time zone 'Asia/Manila') where busy_scooters = 'a1000000-0000-0000-0000-000000000001') = 0
+                     and (select count(*) from scooter_calendar((select t0 from d)::date, (select t0 from d)::date + 3) c join rental_bookings b on b.scooter_id = c.scooter_id and b.pickup_at = c.pickup_at where b.public_token = (select t from tok) and c.blocked_until > b.pickup_at + interval '1 minute') = 0,
+                     'a returned scooter shows as free (booking page + calendar)');
+set role authenticated; select pg_temp.as_user('b0000000-0000-0000-0000-000000000001');
 select pg_temp.expect_error($q$update rental_bookings set status = 'cancelled' where public_token = (select t from tok)$q$, 'check');
 update rental_settings set terms = 'New terms v2';
 reset role; select pg_temp.as_user('');
