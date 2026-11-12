@@ -28,6 +28,7 @@ export interface Scooter {
   name: string;
   description: string | null;
   daily_rate: number;
+  units: number;
   photo_url: string | null;
   is_active: boolean;
   sort_order: number;
@@ -157,4 +158,12 @@ export function monthGrid(year: number, month0: number): (string | null)[] {
 /** Does a taken range touch this Manila day? */
 export const touchesDay = (t: { pickup_at: string; blocked_until: string }, ymd: string) =>
   new Date(t.pickup_at).getTime() < manilaInstant(addDays(ymd, 1), "00:00") && new Date(t.blocked_until).getTime() > manilaInstant(ymd, "00:00");
+/** Most units of one scooter model in use at the same moment during a Manila day. */
+export function peakUseOnDay(taken: { pickup_at: string; blocked_until: string }[], ymd: string): number {
+  const d0 = manilaInstant(ymd, "00:00"), d1 = manilaInstant(addDays(ymd, 1), "00:00");
+  const r = taken.map((t) => ({ s: new Date(t.pickup_at).getTime(), e: new Date(t.blocked_until).getTime() })).filter((x) => x.s < d1 && x.e > d0);
+  if (!r.length) return 0;
+  const pts = [d0, ...r.map((x) => Math.max(x.s, d0))];
+  return Math.max(...pts.map((t) => r.filter((x) => x.s <= t && x.e > t).length));
+}
 export const monthLabel = (year: number, month0: number) => new Date(Date.UTC(year, month0, 15)).toLocaleDateString("en-PH", { month: "long", year: "numeric", timeZone: "UTC" });

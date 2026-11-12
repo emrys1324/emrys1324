@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { getSupabase } from "@/lib/supabase/client";
-import { addDays, monthGrid, monthLabel, touchesDay, type Scooter, type Taken } from "@/lib/rentals";
+import { addDays, monthGrid, monthLabel, peakUseOnDay, type Scooter, type Taken } from "@/lib/rentals";
 
 /**
  * Month calendar of scooter availability (no personal details). With a scooter chosen it shows that
@@ -34,12 +34,16 @@ export function AvailabilityCalendar({
       .then(({ data }) => setTaken((data as Taken[]) ?? []));
   }, [first, last, refreshKey]);
 
-  const ids = scooters.map((s) => s.id);
+  const units = (s: Scooter) => Math.max(1, Number(s.units) || 1);
+  const freeOn = (s: Scooter, ymd: string) => Math.max(0, units(s) - peakUseOnDay(taken.filter((t) => t.scooter_id === s.id), ymd));
   const dayInfo = (ymd: string) => {
-    const busy = new Set(taken.filter((t) => touchesDay(t, ymd)).map((t) => t.scooter_id));
-    if (scooter) return busy.has(scooter.id) ? { tone: "booked", label: "booked" } : { tone: "free", label: "free" };
-    const free = ids.filter((id) => !busy.has(id)).length;
-    return free === 0 ? { tone: "booked", label: "fully booked" } : free === ids.length ? { tone: "free", label: `${free} free` } : { tone: "some", label: `${free} free` };
+    if (scooter) {
+      const f = freeOn(scooter, ymd), u = units(scooter);
+      return f === 0 ? { tone: "booked", label: "booked" } : f === u ? { tone: "free", label: u > 1 ? `${f} free` : "free" } : { tone: "some", label: `${f} of ${u} free` };
+    }
+    const total = scooters.reduce((n, s) => n + units(s), 0);
+    const free = scooters.reduce((n, s) => n + freeOn(s, ymd), 0);
+    return free === 0 ? { tone: "booked", label: "fully booked" } : free === total ? { tone: "free", label: `${free} free` } : { tone: "some", label: `${free} free` };
   };
   const maxMonth = addDays(today, 180).slice(0, 7);
   const cur = `${ym.y}-${String(ym.m + 1).padStart(2, "0")}`;
@@ -99,7 +103,7 @@ export function AvailabilityCalendar({
         <span>
           <span className="mr-1 inline-block h-3 w-3 rounded bg-sage-100 align-middle" /> free
         </span>
-        {!scooter && (
+        {(!scooter || units(scooter) > 1) && (
           <span>
             <span className="mr-1 inline-block h-3 w-3 rounded bg-amber-100 align-middle" /> some booked
           </span>

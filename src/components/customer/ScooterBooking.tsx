@@ -25,6 +25,7 @@ export function ScooterBooking({ rs, brandName }: { rs: RentalSettings; brandNam
   const [endTime, setEndTime] = useState(first.time);
   const [scooters, setScooters] = useState<Scooter[] | null>(null);
   const [busyList, setBusyList] = useState<string[]>([]);
+  const [freeUnits, setFreeUnits] = useState<Record<string, number>>({});
   const [pick, setPick] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -65,8 +66,10 @@ export function ScooterBooking({ rs, brandName }: { rs: RentalSettings; brandNam
   const tooLong = days > rs.max_days;
   const loadTaken = async () => {
     if (!validDates) return;
-    const { data } = await getSupabase().rpc("busy_scooters", { p_pickup: new Date(pickupMs).toISOString(), p_return: new Date(returnMs).toISOString() });
-    setBusyList(((data as string[] | null) ?? []).map(String));
+    const args = { p_pickup: new Date(pickupMs).toISOString(), p_return: new Date(returnMs).toISOString() };
+    const [busy, avail] = await Promise.all([getSupabase().rpc("busy_scooters", args), getSupabase().rpc("scooter_availability", args)]);
+    setBusyList(((busy.data as string[] | null) ?? []).map(String));
+    setFreeUnits(Object.fromEntries(((avail.data as { scooter_id: string; free: number }[] | null) ?? []).map((a) => [a.scooter_id, a.free])));
   };
   useEffect(() => {
     loadTaken();
@@ -276,6 +279,11 @@ export function ScooterBooking({ rs, brandName }: { rs: RentalSettings; brandNam
                   </span>
                 </span>
                 {booked && <Badge tone="gray">Booked</Badge>}
+                {!booked && validDates && Number(s.units) > 1 && freeUnits[s.id] !== undefined && (
+                  <Badge tone={freeUnits[s.id] === 1 ? "amber" : "green"}>
+                    {freeUnits[s.id]} of {s.units} left
+                  </Badge>
+                )}
               </button>
             );
           })}

@@ -522,7 +522,7 @@ function CalendarTab() {
 }
 
 // ---------------------------------------------------------------- scooters
-const EMPTY_SCOOTER = { name: "", description: "", daily_rate: "", photo_url: null as string | null, is_active: true, sort_order: 0 };
+const EMPTY_SCOOTER = { name: "", description: "", daily_rate: "", units: "1", photo_url: null as string | null, is_active: true, sort_order: 0 };
 function ScootersTab() {
   const [list, setList] = useState<Scooter[] | null>(null);
   const [edit, setEdit] = useState<(typeof EMPTY_SCOOTER & { id?: string }) | null>(null);
@@ -542,8 +542,10 @@ function ScootersTab() {
     const rate = Number(edit.daily_rate);
     if (edit.name.trim().length < 2) return setMsg({ tone: "red", text: "Enter the scooter's name." });
     if (!(rate > 0)) return setMsg({ tone: "red", text: "Enter the daily rate in pesos." });
+    const units = Number(edit.units);
+    if (!Number.isInteger(units) || units < 1 || units > 50) return setMsg({ tone: "red", text: "Number of units must be a whole number from 1 to 50." });
     setBusy(true);
-    const row = { name: edit.name.trim(), description: edit.description.trim() || null, daily_rate: rate, photo_url: edit.photo_url, is_active: edit.is_active, sort_order: Number(edit.sort_order) || 0 };
+    const row = { name: edit.name.trim(), description: edit.description.trim() || null, daily_rate: rate, units, photo_url: edit.photo_url, is_active: edit.is_active, sort_order: Number(edit.sort_order) || 0 };
     const { error } = edit.id ? await getSupabase().from("scooters").update(row).eq("id", edit.id) : await getSupabase().from("scooters").insert(row);
     setBusy(false);
     if (error) return setMsg({ tone: "red", text: error.message });
@@ -577,10 +579,13 @@ function ScootersTab() {
             <ScooterPhoto src={s.photo_url} alt={s.name} className="h-16 w-16 shrink-0 rounded-xl" />
             <span className="min-w-0 flex-1">
               <span className="block font-bold">{s.name}</span>
-              <span className="block text-sm text-coffee-700">{formatPeso(s.daily_rate)}/day{s.description ? ` · ${s.description}` : ""}</span>
+              <span className="block text-sm text-coffee-700">
+                {formatPeso(s.daily_rate)}/day · {s.units} unit{s.units === 1 ? "" : "s"}
+                {s.description ? ` · ${s.description}` : ""}
+              </span>
             </span>
             {!s.is_active && <Badge tone="gray">Hidden</Badge>}
-            <button className="btn-secondary btn-sm" onClick={() => setEdit({ id: s.id, name: s.name, description: s.description ?? "", daily_rate: String(s.daily_rate), photo_url: s.photo_url, is_active: s.is_active, sort_order: s.sort_order })}>
+            <button className="btn-secondary btn-sm" onClick={() => setEdit({ id: s.id, name: s.name, description: s.description ?? "", daily_rate: String(s.daily_rate), units: String(s.units ?? 1), photo_url: s.photo_url, is_active: s.is_active, sort_order: s.sort_order })}>
               Edit
             </button>
           </li>
@@ -606,6 +611,13 @@ function ScootersTab() {
                 Daily rate (₱)
               </label>
               <input id="scooter-rate" className="input" inputMode="decimal" value={edit.daily_rate} onChange={(e) => setEdit({ ...edit, daily_rate: e.target.value })} placeholder="500" />
+            </div>
+            <div>
+              <label className="label" htmlFor="scooter-units">
+                Number of units
+              </label>
+              <input id="scooter-units" className="input" inputMode="numeric" value={edit.units} onChange={(e) => setEdit({ ...edit, units: e.target.value })} placeholder="1" />
+              <p className="hint">How many of this scooter you have. That many customers can book it for the same dates; it shows as Booked only when all are taken.</p>
             </div>
             <div className="flex items-center gap-3">
               <ScooterPhoto src={edit.photo_url} alt="" className="h-20 w-20 rounded-xl" />
