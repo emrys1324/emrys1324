@@ -7,7 +7,7 @@ import { Alert, Badge, PageLoader, Spinner } from "@/components/ui";
 import { getSupabase } from "@/lib/supabase/client";
 import { formatPeso } from "@/lib/format";
 import { useStoreSettings } from "@/lib/store-settings";
-import { BOOKING_STATUS_LABEL, prettyDate, useRentalSettings, type BookingStatus } from "@/lib/rentals";
+import { BOOKING_STATUS_LABEL, prettyDateTime, useRentalSettings, type BookingStatus } from "@/lib/rentals";
 
 interface PublicBooking {
   booking_number: string;
@@ -17,6 +17,8 @@ interface PublicBooking {
   customer_name: string;
   start_date: string;
   end_date: string;
+  pickup_at: string;
+  return_at: string;
   days: number;
   daily_rate: number;
   helmets: number;
@@ -160,8 +162,10 @@ export function BookingStatusScreen({ token }: { token: string }) {
           <p>
             <strong>{b.scooter_name}</strong> · {b.helmets === 0 ? "no helmet" : `${b.helmets} helmet${b.helmets > 1 ? "s" : ""}`}
           </p>
-          <p>
-            {prettyDate(b.start_date)} → {prettyDate(b.end_date)} · {b.days} day{b.days === 1 ? "" : "s"}
+          <p data-testid="booking-times">
+            <strong>Pickup:</strong> {prettyDateTime(b.pickup_at)}
+            <br />
+            <strong>Return by:</strong> {prettyDateTime(b.return_at)} · {b.days} day{b.days === 1 ? "" : "s"}
           </p>
           <p>{b.delivery ? `Delivery to: ${b.delivery_address}` : `Pickup${rs?.pickup_note ? `: ${rs.pickup_note}` : ""}`}</p>
           <dl className="space-y-1 border-t border-coffee-100 pt-2">

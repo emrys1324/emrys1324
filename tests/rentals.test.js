@@ -23,11 +23,16 @@ const until = async (fn, what, tries = 40) => {
   throw new Error("FAIL: timed out waiting for " + what);
 };
 
-async function book(page, { scooter, start, end, name, phone, delivery, helmets = 1 }) {
+async function setTimes(page, start, startTime, end, endTime) {
+  await page.locator("#pickup-date").fill(start);
+  await page.locator("#pickup-time").selectOption(startTime);
+  await page.locator("#return-date").fill(end);
+  await page.locator("#return-time").selectOption(endTime);
+}
+async function book(page, { scooter, start, end, startTime = "09:00", endTime = "09:00", name, phone, delivery, helmets = 1 }) {
   await page.goto(BASE + "/baybayin");
   await page.getByRole("heading", { name: "Rent a scooter" }).waitFor();
-  await page.locator("#pickup-date").fill(start);
-  await page.locator("#return-date").fill(end);
+  await setTimes(page, start, startTime, end, endTime);
   await page.getByRole("radio", { name: scooter, exact: true }).click();
   await page.locator("#renter-name").fill(name);
   await page.locator("#renter-phone").fill(phone);
@@ -81,6 +86,7 @@ async function book(page, { scooter, start, end, name, phone, delivery, helmets 
   await admin.locator("#security-deposit").fill("2000");
   await admin.locator("#security-note").fill("or leave a valid ID");
   await admin.locator("#pickup-note").fill("At Pahuway Cafe, Poblacion — 8 AM to 6 PM");
+  assert((await admin.locator("#grace-minutes").inputValue()) === "60" && (await admin.locator("#turnaround-minutes").inputValue()) === "30", "settings: late-return grace (60 min) and time between bookings (30 min)");
   await admin.getByRole("switch", { name: "Accept bookings" }).click();
   await admin.getByRole("button", { name: "Save rental settings" }).click();
   await admin.getByText("Rental settings saved.").waitFor();
@@ -97,6 +103,7 @@ async function book(page, { scooter, start, end, name, phone, delivery, helmets 
   assert(true, "form checks: scooter, name, mobile and license photo required");
   await book(cust, { scooter: "Honda Click 125", start: s1, end: e1, name: "Ana Reyes", phone: "0917 111 2222", helmets: 2, delivery: "Kamandag Beach Resort, Poblacion" });
   await cust.getByTestId("rental-days").getByText("2 days").waitFor();
+  assert((await cust.getByTestId("rental-days").textContent()).includes("9:00 AM") && (await cust.getByTestId("rental-days").textContent()).includes("48 h"), "pickup/return times shown: 9:00 AM → 9:00 AM, 48 h = 2 days");
   const summary = await cust.getByTestId("rental-summary").textContent();
   assert(summary.includes("₱1,150") && summary.includes("₱345") && summary.includes("₱805"), "summary: 2 days × ₱500 + ₱150 delivery = ₱1,150; 30% deposit ₱345; ₱805 at pickup");
   assert((await cust.getByTestId("security-deposit").textContent()).includes("₱2,000"), "security deposit notice shown");
@@ -110,28 +117,35 @@ async function book(page, { scooter, start, end, name, phone, delivery, helmets 
   await cust.getByText("You're booked! Deposit received ✓").waitFor({ timeout: 15000 });
   assert(sql(`select status||'|'||payment_status from rental_bookings where booking_number='${bookingNo}'`) === "confirmed|deposit_paid", "after paying: booking confirmed, deposit paid");
   assert((await cust.getByTestId("balance").textContent()) === "₱805", "booking page shows the balance due at pickup");
+  assert(/Pickup:.*9:00\s?AM[\s\S]*Return by:.*9:00\s?AM/.test(await cust.getByTestId("booking-times").textContent()), "booking page shows the pickup and return times");
 
-  // ---------- no double booking ----------
+  // ---------- no double booking (times + 30-min turnaround) ----------
   const cust2 = await (await browser.newContext(phone)).newPage();
   await cust2.goto(BASE + "/baybayin");
-  await cust2.locator("#pickup-date").fill(ymd(3));
-  await cust2.locator("#return-date").fill(ymd(5));
+  await setTimes(cust2, ymd(3), "12:00", ymd(5), "12:00");
   await until(async () => (await cust2.getByRole("radio", { name: "Honda Click 125 (booked)" }).count()) === 1, "Honda shown as booked");
-  assert(await cust2.getByRole("radio", { name: "Honda Click 125 (booked)" }).isDisabled(), "overlapping dates: the booked scooter can't be chosen");
-  await cust2.locator("#pickup-date").fill(e1);
-  await cust2.locator("#return-date").fill(ymd(6));
-  await until(async () => (await cust2.getByRole("radio", { name: "Honda Click 125", exact: true }).count()) === 1, "Honda free from its return day");
-  assert(true, "the scooter is free again from its return day");
+  assert(await cust2.getByRole("radio", { name: "Honda Click 125 (booked)" }).isDisabled(), "overlapping times: the booked scooter can't be chosen");
+  await setTimes(cust2, e1, "09:00", ymd(5), "09:00");
+  await until(async () => (await cust2.getByRole("radio", { name: "Honda Click 125 (booked)" }).count()) === 1, "Honda still busy right at its return time");
+  assert(true, "pickup at the exact return time is blocked (30-min turnaround)");
+  await setTimes(cust2, e1, "09:30", ymd(5), "09:30");
+  await until(async () => (await cust2.getByRole("radio", { name: "Honda Click 125", exact: true }).count()) === 1, "Honda free 30 min after its return");
+  assert(true, "the scooter is free again 30 minutes after its return");
+  await setTimes(cust2, ymd(7), "09:00", ymd(8), "10:30");
+  await cust2.getByTestId("rental-days").getByText("2 days").waitFor();
+  await setTimes(cust2, ymd(7), "09:00", ymd(8), "09:30");
+  await cust2.getByTestId("rental-days").getByText("1 day").waitFor();
+  assert(true, "24-hour blocks: 25.5 h = 2 days, 24.5 h = 1 day (60-min grace)");
 
   // ---------- second booking: Yamaha, then cancel + refund ----------
-  await book(cust2, { scooter: "Yamaha Mio", start: ymd(10), end: ymd(10), name: "Ben Cruz", phone: "09181234567" });
+  await book(cust2, { scooter: "Yamaha Mio", start: ymd(10), end: ymd(10), startTime: "09:00", endTime: "17:00", name: "Ben Cruz", phone: "09181234567" });
   await cust2.getByTestId("rental-days").getByText("1 day").waitFor();
   await cust2.getByRole("button", { name: "Pay ₱120 deposit" }).click();
   await cust2.waitForURL(/127\.0\.0\.1:4010\/checkout/);
   const no2 = await cust2.locator("#ref").textContent();
   await cust2.getByRole("button", { name: "Pay with GCash" }).click();
   await cust2.getByText("You're booked! Deposit received ✓").waitFor({ timeout: 15000 });
-  assert(true, "same-day rental = 1 day (₱400 → ₱120 deposit) booked and paid");
+  assert(true, "same-day 8-hour rental = 1 day (₱400 → ₱120 deposit) booked and paid");
 
   // ---------- staff: bookings ----------
   await admin.getByRole("tab", { name: "bookings" }).click();
@@ -143,6 +157,7 @@ async function book(page, { scooter, start, end, name, phone, delivery, helmets 
   await until(() => sheet.getByTestId("license-photo").evaluate((img) => img.complete && img.naturalWidth > 0).catch(() => false), "license photo to load");
   assert(true, "staff see the booking with the customer's license photo (private, signed link)");
   assert((await sheet.getByTestId("collect-at-pickup").textContent()) === "₱805" && (await sheet.textContent()).includes("Kamandag Beach Resort"), "staff see what to collect at pickup and the delivery address");
+  assert(/Pickup.*9:00\s?AM[\s\S]*Return by.*9:00\s?AM/.test(await sheet.getByTestId("booking-sheet-times").textContent()), "staff see the pickup and return times");
   await sheet.getByRole("button", { name: "Mark picked up" }).click();
   await until(() => sql(`select status from rental_bookings where booking_number='${bookingNo}'`) === "picked_up", "picked up");
   await sheet.getByRole("button", { name: "Balance collected" }).click();

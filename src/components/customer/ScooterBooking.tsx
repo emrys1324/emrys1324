@@ -6,17 +6,19 @@ import { ScooterPhoto } from "./ScooterPhoto";
 import { getSupabase } from "@/lib/supabase/client";
 import { formatPeso, friendlyError, normalizePhone } from "@/lib/format";
 import { resizeImage } from "@/lib/upload";
-import { addDays, getRecentBooking, lastNight, manilaDate, prettyDate, rentalDays, saveRecentBooking, type RentalSettings, type Scooter } from "@/lib/rentals";
+import { addDays, getRecentBooking, hoursLabel, manilaDate, manilaInstant, nextPickupSlot, prettyDate, rentalDays24, saveRecentBooking, slotLabel, TIME_SLOTS, type RentalSettings, type Scooter } from "@/lib/rentals";
 
-type Taken = { scooter_id: string; start_date: string; end_date: string };
 
 /** Baybayin booking: dates → scooter → details & license → pay the deposit online. */
 export function ScooterBooking({ rs, brandName }: { rs: RentalSettings; brandName: string }) {
   const today = manilaDate();
-  const [start, setStart] = useState(today);
-  const [end, setEnd] = useState(addDays(today, 1));
+  const first = useMemo(() => nextPickupSlot(), []);
+  const [start, setStart] = useState(first.date);
+  const [startTime, setStartTime] = useState(first.time);
+  const [end, setEnd] = useState(addDays(first.date, 1));
+  const [endTime, setEndTime] = useState(first.time);
   const [scooters, setScooters] = useState<Scooter[] | null>(null);
-  const [taken, setTaken] = useState<Taken[]>([]);
+  const [busyList, setBusyList] = useState<string[]>([]);
   const [pick, setPick] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -43,18 +45,22 @@ export function ScooterBooking({ rs, brandName }: { rs: RentalSettings; brandNam
       .then(({ data }) => setScooters((data as Scooter[]) ?? []));
   }, []);
 
-  const validDates = start >= today && end >= start;
-  const days = validDates ? rentalDays(start, end) : 0;
+  const pickupMs = manilaInstant(start, startTime);
+  const returnMs = manilaInstant(end, endTime);
+  const pastPickup = !(pickupMs >= Date.now() - 15 * 60_000);
+  const tooShort = !(returnMs >= pickupMs + 3_600_000);
+  const validDates = !pastPickup && !tooShort;
+  const days = validDates ? rentalDays24(pickupMs, returnMs, rs.grace_minutes ?? 60) : 0;
   const tooLong = days > rs.max_days;
   const loadTaken = async () => {
     if (!validDates) return;
-    const { data } = await getSupabase().rpc("scooter_bookings_between", { p_from: start, p_to: lastNight(start, end) });
-    setTaken((data as Taken[]) ?? []);
+    const { data } = await getSupabase().rpc("busy_scooters", { p_pickup: new Date(pickupMs).toISOString(), p_return: new Date(returnMs).toISOString() });
+    setBusyList(((data as string[] | null) ?? []).map(String));
   };
   useEffect(() => {
     loadTaken();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [start, end]);
+  }, [start, startTime, end, endTime]);
   useEffect(() => {
     if (!license) return setLicensePreview(null);
     const u = URL.createObjectURL(license);
@@ -62,11 +68,7 @@ export function ScooterBooking({ rs, brandName }: { rs: RentalSettings; brandNam
     return () => URL.revokeObjectURL(u);
   }, [license]);
 
-  const busyIds = useMemo(() => {
-    if (!validDates) return new Set<string>();
-    const last = lastNight(start, end);
-    return new Set(taken.filter((t) => t.start_date <= last && t.end_date >= start).map((t) => t.scooter_id));
-  }, [taken, start, end, validDates]);
+  const busyIds = useMemo(() => new Set(validDates ? busyList : []), [busyList, validDates]);
   useEffect(() => {
     if (pick && busyIds.has(pick)) setPick(null);
   }, [busyIds, pick]);
@@ -77,7 +79,7 @@ export function ScooterBooking({ rs, brandName }: { rs: RentalSettings; brandNam
   const deposit = total ? Math.min(total, Math.max(1, Math.round((total * rs.deposit_percent) / 100))) : 0;
 
   const errors: Record<string, string> = {};
-  if (!validDates) errors.dates = end < start ? "The return date must be on or after the pickup date." : "Pickup can't be in the past.";
+  if (!validDates) errors.dates = pastPickup ? "That pickup time has passed. Please choose a later time." : "Return at least 1 hour after pickup.";
   else if (tooLong) errors.dates = `Rentals can be up to ${rs.max_days} days.`;
   if (!scooter) errors.scooter = "Choose a scooter.";
   if (name.trim().length < 2) errors.name = "Please enter your name.";
@@ -106,8 +108,8 @@ export function ScooterBooking({ rs, brandName }: { rs: RentalSettings; brandNam
       const { data, error } = await db.rpc("book_scooter", {
         p: {
           scooter_id: scooter!.id,
-          start_date: start,
-          end_date: end,
+          pickup_at: `${start}T${startTime}`,
+          return_at: `${end}T${endTime}`,
           customer_name: name.trim(),
           customer_phone: normalizePhone(phone),
           customer_email: email.trim() || null,
@@ -145,37 +147,38 @@ export function ScooterBooking({ rs, brandName }: { rs: RentalSettings; brandNam
         </Link>
       )}
 
-      {/* 1 · Dates */}
+      {/* 1 · Pickup & return */}
       <section className="card space-y-3 p-5" data-error={tried && !!errors.dates}>
         <h2 className="section-title">When?</h2>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="label" htmlFor="pickup-date">
-              Pickup
-            </label>
-            <input
-              id="pickup-date"
-              type="date"
-              className="input"
-              min={today}
-              max={addDays(today, 180)}
-              value={start}
-              onChange={(e) => {
-                setStart(e.target.value);
-                if (end < e.target.value) setEnd(addDays(e.target.value, 1));
-              }}
-            />
-          </div>
-          <div>
-            <label className="label" htmlFor="return-date">
-              Return
-            </label>
-            <input id="return-date" type="date" className="input" min={start} max={addDays(start, rs.max_days)} value={end} onChange={(e) => setEnd(e.target.value)} />
-          </div>
-        </div>
+        {(
+          [
+            ["pickup", "Pickup", start, startTime, today, (d: string) => {
+              setStart(d);
+              if (end < d) setEnd(addDays(d, 1));
+            }, setStartTime],
+            ["return", "Return", end, endTime, start, setEnd, setEndTime],
+          ] as const
+        ).map(([id, label, d, t, min, setD, setT]) => (
+          <fieldset key={id} className="grid grid-cols-[1fr_auto] gap-2">
+            <legend className="label">{label}</legend>
+            <input id={`${id}-date`} aria-label={`${label} date`} type="date" className="input" min={min} max={addDays(today, 180)} value={d} onChange={(e) => setD(e.target.value)} />
+            <select id={`${id}-time`} aria-label={`${label} time`} className="input w-32" value={t} onChange={(e) => setT(e.target.value)}>
+              {TIME_SLOTS.map((x) => (
+                <option key={x} value={x}>
+                  {slotLabel(x)}
+                </option>
+              ))}
+            </select>
+          </fieldset>
+        ))}
         {validDates && !tooLong ? (
           <p className="hint" data-testid="rental-days">
-            {prettyDate(start)} → {prettyDate(end)} · <strong>{days} day{days === 1 ? "" : "s"}</strong> (returning the same day counts as 1 day)
+            {prettyDate(start)}, {slotLabel(startTime)} → {prettyDate(end)}, {slotLabel(endTime)} · {hoursLabel(returnMs - pickupMs)} ·{" "}
+            <strong>
+              {days} day{days === 1 ? "" : "s"}
+            </strong>
+            <br />
+            Charged per 24 hours{(rs.grace_minutes ?? 60) > 0 ? ` — returning up to ${rs.grace_minutes ?? 60} minutes late is free` : ""}.
           </p>
         ) : (
           <p className="error-text">{errors.dates}</p>
