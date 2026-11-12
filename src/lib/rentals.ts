@@ -14,6 +14,7 @@ export interface RentalSettings {
   grace_minutes: number;
   turnaround_minutes: number;
   terms: string | null;
+  online_enabled: boolean;
   terms_updated_at: string | null;
   sms_enabled: boolean;
   staff_alert_phones: string | null;

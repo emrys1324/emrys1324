@@ -40,7 +40,9 @@ const t0 = Date.now();
   await cust.goto(BASE + "/");
   await cust.getByRole("heading", { name: "Welcome!" }).waitFor();
   const scooter = cust.getByTestId("choose-scooter");
-  if (!(await scooter.getByText("Coming soon").isVisible())) throw new Error("Scooter rental should show Coming soon");
+  await scooter.getByText("Coming soon").waitFor({ timeout: 10000 }).catch(() => {
+    throw new Error("Scooter rental should show Coming soon");
+  });
   await cust.getByTestId("choose-cafe").getByText(/Open now · until/).waitFor();
   await cust.screenshot({ path: SHOTS + "0-home.png" });
   await scooter.click();

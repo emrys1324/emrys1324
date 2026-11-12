@@ -48,6 +48,24 @@ select pg_temp.check((select payment_method = 'gcash' and payment_status = 'for_
                       and terms_agreed_at is not null and terms_snapshot like '1. Bring a valid%'
                       from rental_bookings where public_token = (select (r->>'token')::uuid from b1)), 'GCash receipt + reference saved, waiting for staff (no auto-expiry), agreed terms recorded');
 
+-- online deposit (HitPay): only when switched on; no GCash receipt needed; 30-minute hold
+set role anon;
+select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 400, 424, '{"payment_method": "online", "gcash_reference": null, "payment_proof_path": null}'))$q$, 'Online payment is not available');
+select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 400, 424, '{"payment_method": "cash"}'))$q$, 'choose how to pay');
+reset role;
+update rental_settings set online_enabled = true;
+set role anon;
+create temp table b_online on commit preserve rows as
+  select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 400, 424, '{"payment_method": "online", "gcash_reference": null, "payment_proof_path": null}')) r;
+reset role;
+select pg_temp.check((select payment_method = 'online' and payment_status = 'awaiting_payment' and gcash_reference is null and payment_proof_path is null
+                      and payment_expires_at between now() + interval '29 minutes' and now() + interval '31 minutes' and terms_snapshot is not null
+                      from rental_bookings where public_token = (select (r->>'token')::uuid from b_online)) and (select r->>'payment_method' from b_online) = 'online',
+                     'online deposit (switch on): no receipt needed, waiting for HitPay, held 30 minutes, terms recorded');
+update rental_bookings set payment_expires_at = now() - interval '1 minute' where public_token = (select (r->>'token')::uuid from b_online);
+select public.expire_unpaid_bookings();
+select pg_temp.check((select status = 'cancelled' from rental_bookings where public_token = (select (r->>'token')::uuid from b_online)), 'an unpaid online hold is released after 30 minutes');
+
 -- 24-hour blocks with grace; back-to-back with turnaround
 set role anon;
 select pg_temp.check((book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 100, 108))->>'days')::int = 1, '8 hours = 1 day');

@@ -3,12 +3,14 @@
 // deposit by GCash with a receipt screenshot; staff check the receipt and verify or reject; staff calendar;
 // cancel + "sent back by GCash" refund; reminders; texts via (mock) Semaphore; switch off → Coming soon.
 // Start the app with:
+//   HITPAY_API_KEY=hp_e2e HITPAY_SALT=salt_e2e HITPAY_API_BASE=http://127.0.0.1:4010 \
 //   SEMAPHORE_API_KEY=sm_test SEMAPHORE_API_BASE=http://127.0.0.1:4020 NEXT_PUBLIC_SITE_URL=http://localhost:3000 npx next start -p 3000
 // Run: npm run test:rentals
 const { chromium, devices } = require("playwright");
 const { execFileSync } = require("child_process");
 const path = require("path");
 const { startMockSemaphore } = require("./mock-semaphore");
+const { startMockHitpay } = require("./mock-hitpay");
 const BASE = process.env.BASE_URL || "http://localhost:3000";
 const F = (n) => path.join(__dirname, "fixtures", n);
 const sql = (q) => execFileSync("docker", ["exec", "-i", "supabase_db_pahuway-cafe", "psql", "-U", "postgres", "-Atc", q]).toString().trim();
@@ -55,6 +57,8 @@ async function book(page, { scooter, start, end, startTime = "09:00", endTime = 
 }
 async function payGcash(page, ref = "1012 345 678901") {
   await page.getByLabel("I have read and agree to the terms and conditions").check();
+  const manual = page.getByRole("radio", { name: /GCash \(send manually\)/ });
+  if (await manual.count()) await manual.click();
   await page.locator("#gcash-ref").fill(ref);
   await page.setInputFiles("input[aria-label='GCash payment screenshot']", F("test-logo.png"));
   await page.getByRole("button", { name: /^Book & send ₱[\d,]+ deposit$/ }).click();
@@ -67,6 +71,8 @@ async function payGcash(page, ref = "1012 345 678901") {
   sql("delete from rental_bookings; delete from scooters; update rental_settings set bookings_enabled = false, terms = null, deposit_percent = 30, security_deposit = 0, security_deposit_note = null, delivery_fee = 0, pickup_note = null, max_days = 30;");
   sql("update store_settings set gcash_name = 'Pahuway Cafe', gcash_number = '0917 555 0000' where id = 1;");
   const sms = await startMockSemaphore({ port: 4020, apiKey: "sm_test" });
+  const hp = await startMockHitpay({ port: 4010, salt: "salt_e2e", apiKey: "hp_e2e" });
+  sql("update rental_settings set online_enabled = false;");
   const textsTo = (n, re) => sms.messages.filter((m) => m.number === n && (!re || re.test(m.message)));
   sql("delete from rental_sms_log; update rental_settings set sms_enabled = true, staff_alert_phones = null, reminder_hours = 3;");
   const browser = await chromium.launch();
@@ -245,6 +251,57 @@ async function payGcash(page, ref = "1012 345 678901") {
   assert(true, "customer's booking page shows cancelled + deposit sent back");
   await admin.keyboard.press("Escape");
 
+  // ---------- online deposit (HitPay) ----------
+  assert((await cust3.getByRole("radio", { name: /Pay online/ }).count()) === 0, "with online deposit off, customers only see the GCash receipt option");
+  await admin.getByRole("tab", { name: "settings" }).click();
+  await admin.getByRole("switch", { name: "Online deposit (HitPay)" }).click();
+  await admin.getByRole("button", { name: "Save rental settings" }).click();
+  await admin.getByText("Rental settings saved.").waitFor();
+  assert(sql("select online_enabled::text from rental_settings") === "true", "admin switches on the online deposit (HitPay)");
+  const cust5 = await (await browser.newContext(phone)).newPage();
+  await book(cust5, { scooter: "Honda Click 125", start: ymd(30), end: ymd(31), name: "Eva Santos", phone: "09211234567" });
+  assert((await cust5.getByRole("radio", { name: /Pay online/ }).count()) === 0, "payment choices stay hidden until the terms are agreed");
+  await cust5.getByLabel("I have read and agree to the terms and conditions").check();
+  await cust5.getByTestId("online-payment").waitFor();
+  assert((await cust5.getByRole("radio", { name: /Pay online/ }).getAttribute("aria-checked")) === "true" && (await cust5.locator("#gcash-ref").count()) === 0, "after agreeing: Pay online (selected) or GCash (send manually); no receipt needed online");
+  await cust5.getByRole("radio", { name: /GCash \(send manually\)/ }).click();
+  await cust5.locator("#gcash-ref").waitFor();
+  await cust5.getByRole("radio", { name: /Pay online/ }).click();
+  await cust5.getByRole("button", { name: "Pay ₱150 deposit online" }).click();
+  await cust5.waitForURL(/127\.0\.0\.1:4010\/checkout\/pr_\d+/);
+  assert((await cust5.locator("#amount").textContent()) === "PHP 150.00", "customer goes to HitPay for exactly the ₱150 deposit (1 day × ₱500 × 30%)");
+  const no5 = await cust5.locator("#ref").textContent();
+  assert(sql(`select payment_method||'|'||payment_status||'|'||(payment_expires_at is not null)||'|'||(terms_snapshot is not null) from rental_bookings where booking_number='${no5}'`) === "online|awaiting_payment|true|true", "online booking held 30 minutes while unpaid, terms recorded");
+  await cust5.getByRole("button", { name: "Pay with GCash" }).click();
+  await cust5.waitForURL(/\/baybayin\/booking\/[0-9a-f-]{36}\?paid=1/);
+  await cust5.getByText("You're booked! Deposit received ✓").waitFor({ timeout: 15000 });
+  assert(sql(`select status||'|'||payment_status from rental_bookings where booking_number='${no5}'`) === "confirmed|deposit_paid", "after paying on HitPay the booking confirms automatically (no staff check)");
+  await until(() => textsTo("09211234567", /is confirmed/).length === 1, "online confirmation text");
+  assert(true, "the customer gets the confirmation text right after paying online");
+  await admin.getByRole("tab", { name: "bookings" }).click();
+  await admin.getByRole("radio", { name: "Confirmed & on the road" }).click();
+  await admin.getByTestId("booking-row").filter({ hasText: no5 }).click();
+  await sheet.getByText("Eva Santos").waitFor();
+  assert((await sheet.getByTestId("gcash-proof").count()) === 0 && (await sheet.textContent()).includes("Deposit (online)"), "staff see it as an online deposit (no receipt to check)");
+  await sheet.getByRole("button", { name: "Cancel this booking…" }).click();
+  await sheet.getByRole("button", { name: "Customer cancelled" }).click();
+  await sheet.getByRole("button", { name: "Cancel booking" }).click();
+  await sheet.getByRole("button", { name: "Refund ₱150 deposit" }).click();
+  await until(() => sql(`select payment_status from rental_bookings where booking_number='${no5}'`) === "refunded", "online refund");
+  assert(hp.refunds.some((r) => r.amount === "150.00"), "cancelling an online booking refunds the deposit through HitPay");
+  await admin.keyboard.press("Escape");
+  const cust6 = await (await browser.newContext(phone)).newPage();
+  await book(cust6, { scooter: "Yamaha Mio", start: ymd(40), end: ymd(41), name: "Fe Cruz", phone: "09221234567" });
+  await cust6.getByLabel("I have read and agree to the terms and conditions").check();
+  await cust6.getByRole("button", { name: "Pay ₱120 deposit online" }).click();
+  await cust6.waitForURL(/127\.0\.0\.1:4010\/checkout\/(pr_\d+)/);
+  const pr6 = cust6.url().split("/").pop();
+  await cust6.getByRole("link", { name: "Back to merchant" }).click();
+  await cust6.getByText("Complete your deposit").waitFor({ timeout: 10000 });
+  await cust6.getByRole("button", { name: "Pay ₱120 now" }).click();
+  await cust6.waitForURL(new RegExp(`/checkout/${pr6}$`));
+  assert(true, "leaving HitPay unpaid: the booking page offers Pay now, which resumes the same payment");
+
   // ---------- staff calendar ----------
   await admin.getByRole("tab", { name: "calendar" }).click();
   const scal = admin.getByTestId("staff-calendar");
@@ -303,7 +360,8 @@ async function payGcash(page, ref = "1012 345 678901") {
 
   await browser.close();
   sms.server.close();
-  sql("delete from rental_bookings; delete from scooters; update rental_settings set bookings_enabled = false, terms = null;");
+  hp.server.close();
+  sql("delete from rental_bookings; delete from scooters; update rental_settings set bookings_enabled = false, terms = null, online_enabled = false;");
   console.log("\nAll rental checks passed.");
 })().catch((e) => {
   console.error(e);

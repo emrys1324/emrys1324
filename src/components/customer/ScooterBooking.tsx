@@ -28,6 +28,8 @@ export function ScooterBooking({ rs, brandName }: { rs: RentalSettings; brandNam
   const [email, setEmail] = useState("");
   const [helmets, setHelmets] = useState(1);
   const [agreed, setAgreed] = useState(false);
+  const [method, setMethod] = useState<"online" | "gcash">(rs.online_enabled ? "online" : "gcash");
+  const payOnline = rs.online_enabled && method === "online";
   const [gcashRef, setGcashRef] = useState("");
   const [proof, setProof] = useState<File | null>(null);
   const [proofPreview, setProofPreview] = useState<string | null>(null);
@@ -100,7 +102,7 @@ export function ScooterBooking({ rs, brandName }: { rs: RentalSettings; brandNam
   if (!license) errors.license = "Please add a photo of your driver's license.";
   else if (license.size > 8 * 1024 * 1024) errors.license = "That photo is too large (max 8 MB).";
   if (!agreed) errors.terms = "Please read and agree to the terms and conditions.";
-  else {
+  else if (!payOnline) {
     if (gcashRef.replace(/\s/g, "").length < 4) errors.gcashRef = "Enter the reference number from your GCash receipt.";
     if (!proof) errors.proof = "Please attach a screenshot of your GCash payment.";
     else if (proof.size > 5 * 1024 * 1024) errors.proof = "Screenshot is too large (max 5 MB).";
@@ -123,11 +125,14 @@ export function ScooterBooking({ rs, brandName }: { rs: RentalSettings; brandNam
       const path = `licenses/${today}/${crypto.randomUUID()}.${ext}`;
       const up = await db.storage.from("license-photos").upload(path, blob, { contentType: blob.type || license!.type, upsert: false });
       if (up.error) throw new Error("We couldn't upload your license photo. Please try again. " + up.error.message);
-      const pblob = await resizeImage(proof!, 1600);
-      const pext = pblob.type === "image/jpeg" ? "jpg" : (proof!.name.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "");
-      const proofPath = `proofs/rentals/${today}/${crypto.randomUUID()}.${pext}`;
-      const pup = await db.storage.from("payment-proofs").upload(proofPath, pblob, { contentType: pblob.type || proof!.type, upsert: false });
-      if (pup.error) throw new Error("We couldn't upload your GCash screenshot. Please try again. " + pup.error.message);
+      let proofPath: string | null = null;
+      if (!payOnline) {
+        const pblob = await resizeImage(proof!, 1600);
+        const pext = pblob.type === "image/jpeg" ? "jpg" : (proof!.name.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "");
+        proofPath = `proofs/rentals/${today}/${crypto.randomUUID()}.${pext}`;
+        const pup = await db.storage.from("payment-proofs").upload(proofPath, pblob, { contentType: pblob.type || proof!.type, upsert: false });
+        if (pup.error) throw new Error("We couldn't upload your GCash screenshot. Please try again. " + pup.error.message);
+      }
       const { data, error } = await db.rpc("book_scooter", {
         p: {
           scooter_id: scooter!.id,
@@ -140,7 +145,8 @@ export function ScooterBooking({ rs, brandName }: { rs: RentalSettings; brandNam
           license_path: path,
           notes,
           terms_agreed: agreed,
-          gcash_reference: gcashRef.replace(/\s/g, ""),
+          payment_method: payOnline ? "online" : "gcash",
+          gcash_reference: payOnline ? null : gcashRef.replace(/\s/g, ""),
           payment_proof_path: proofPath,
         },
       });
@@ -152,6 +158,12 @@ export function ScooterBooking({ rs, brandName }: { rs: RentalSettings; brandNam
         throw new Error(error.message);
       }
       saveRecentBooking(data.token, data.booking_number);
+      if (payOnline) {
+        const res = await fetch("/api/rentals/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: data.token }) });
+        const j = await res.json().catch(() => ({}));
+        window.location.href = res.ok && j.url ? j.url : `/baybayin/booking/${data.token}`; // the booking page offers "Pay now" again
+        return;
+      }
       await fetch("/api/rentals/new-booking", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: data.token }), keepalive: true }).catch(() => null);
       window.location.href = `/baybayin/booking/${data.token}`;
     } catch (err) {
@@ -364,7 +376,28 @@ export function ScooterBooking({ rs, brandName }: { rs: RentalSettings; brandNam
           I have read and agree to the terms and conditions
         </label>
         {show("terms")}
-        {agreed && (
+        {agreed && rs.online_enabled && (
+          <div className="grid gap-2 sm:grid-cols-2" role="radiogroup" aria-label="Deposit payment">
+            {(
+              [
+                ["online", "Pay online", "GCash, Maya, QR Ph or online banking · confirmed instantly"],
+                ["gcash", "GCash (send manually)", "Send to our GCash and upload the receipt"],
+              ] as const
+            ).map(([v, title, sub]) => (
+              <button key={v} type="button" role="radio" aria-checked={method === v} onClick={() => setMethod(v)} className={`rounded-2xl border-2 px-4 py-3 text-left ${method === v ? "border-coffee-700 bg-coffee-50" : "border-coffee-100 bg-white"}`}>
+                <span className="block font-semibold">{title}</span>
+                <span className="block text-sm text-coffee-700">{sub}</span>
+              </button>
+            ))}
+          </div>
+        )}
+        {agreed && payOnline && (
+          <div className="rounded-2xl bg-cream-100 p-4 text-sm text-coffee-800" data-testid="online-payment">
+            <p className="text-base font-semibold">Deposit to pay online: {deposit ? formatPeso(deposit) : "—"}</p>
+            <p>You&apos;ll go to our secure payment page (HitPay) to pay with GCash, Maya or your bank app by scanning the QR Ph code, or with online banking. Your booking is confirmed as soon as the payment goes through. Please pay within 30 minutes.</p>
+          </div>
+        )}
+        {agreed && !payOnline && (
           <div className="space-y-4 rounded-2xl bg-cream-100 p-4" data-testid="gcash-payment">
             <h3 className="font-semibold">Pay the deposit with GCash</h3>
             <div className="flex flex-col items-center gap-3 text-center sm:flex-row sm:text-left">
@@ -416,7 +449,7 @@ export function ScooterBooking({ rs, brandName }: { rs: RentalSettings; brandNam
       <div className="fixed inset-x-0 bottom-0 z-20 border-t border-coffee-100 bg-cream/95 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur">
         <div className="mx-auto max-w-lg">
           <button className="btn-primary w-full" disabled={busy}>
-            {busy ? <Spinner /> : agreed && deposit ? `Book & send ${formatPeso(deposit)} deposit` : `Book a scooter from ${brandName}`}
+            {busy ? <Spinner /> : agreed && deposit ? (payOnline ? `Pay ${formatPeso(deposit)} deposit online` : `Book & send ${formatPeso(deposit)} deposit`) : `Book a scooter from ${brandName}`}
           </button>
         </div>
       </div>
