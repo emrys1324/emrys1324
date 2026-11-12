@@ -172,7 +172,7 @@ const nav = async (page) => (await page.getByRole("navigation", { name: "Admin" 
   await mara.waitForURL(BASE + "/admin");
   await mara.goto(BASE + "/admin/settings");
   await mara.getByRole("heading", { name: "Team" }).waitFor();
-  assert((await nav(mara)).length === 7, "Full admin sees every page, including Team");
+  assert((await nav(mara)).length === 8, "Full admin sees every page, including Team");
 
   // ---------- password reset: link and email ----------
   await beaRow.getByRole("button", { name: "Copy password-reset link" }).click();

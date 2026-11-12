@@ -16,7 +16,7 @@ More screenshots are in [`docs/screenshots/`](docs/screenshots).
 
 ## What's inside
 
-**Home** (`/`): customers choose **Order from Pahuway Cafe** (shows whether the café is open and any items already in the cart) or **Rent a scooter from Baybayin** (opens a *Coming soon* page at `/baybayin`). The home page, the café pages and Baybayin each have their **own header branding** (title, tagline, logo, colour), and the welcome text, card descriptions and the **website icon** (browser tab / home screen) are editable in Admin → Settings → Branding.
+**Home** (`/`): customers choose **Order from Pahuway Cafe** (shows whether the café is open and any items already in the cart) or **Rent a scooter from Baybayin** (`/baybayin`: daily scooter booking with license photo, helmets, optional delivery and an online deposit via HitPay once *Accept bookings* is on — otherwise *Coming soon*; see [docs/RENTALS.md](docs/RENTALS.md)). The home page, the café pages and Baybayin each have their **own header branding** (title, tagline, logo, colour), and the welcome text, card descriptions and the **website icon** (browser tab / home screen) are editable in Admin → Settings → Branding.
 
 **Customers** go from menu (`/menu`) to order placed in 3 screens:
 1. **Menu**: categories, photos, prices and "Sold out" badges. Tap an item to choose options (hot/iced, sugar level, milk, add-ons, pizza size) with live price updates. The cart opens as a drawer on the same screen.
@@ -125,6 +125,7 @@ Open http://localhost:3000. Staff and riders sign in at http://localhost:3000/lo
 | Delivery map pin (23 checks) | `npm run test:maps` | Pin by tap / current location / remove, saved on the order + account, guest pin remembered, server rejects pins outside the Philippines, rider Google Maps/Waze links + no-pin fallback, staff pin link. |
 | Google Maps mode (26 checks) | `npm run test:google-maps` | Address suggestions → pin, barangay → map, pin → fills empty fields, never overwrites, rider/staff previews, fallback to OpenStreetMap if Google rejects the key. Uses a Google Maps stand-in; start the app with `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=test-key`. |
 | Team & permissions (27 checks) | `npm run test:team` | Needs the local email catcher (`npx supabase start`, mailpit on :54324). Invite by email (real email → /welcome → set password) and by link (rider), per-person permissions (pages, APIs, open/close), editing permissions, password-reset link + email, links work once, switch off/on, self-protection, delete keeps delivery history. |
+| Scooter rentals (21 checks) | `npm run test:rentals` | Admin adds scooters + opens bookings; booking with license upload, pricing, deposit on mock HitPay, no double-booking, return-day turnover, pickup/return, cancel + refund, resume unpaid, Coming soon when off. Start the app with the HitPay test env. |
 | End-to-end acceptance test | `npm run test:e2e` | Needs local Supabase + `seed:users` + the app on :3000, plus Playwright (`npm i -D playwright && npx playwright install chromium`). Drives a customer phone, staff tablet and rider phone at once and re-creates the screenshots. |
 
 The end-to-end test covers every acceptance criterion: a guest orders a customised iced latte for delivery and pays by GCash screenshot. Staff see it instantly with a chime, verify payment, accept, assign the rider and mark it ready, and the customer's page updates live at each step. The rider sees only their order and marks it picked up, then delivered. Marking Americano sold out removes its Add button on the customer's phone at once. Closing the store blocks ordering with a friendly message.
@@ -137,7 +138,7 @@ supabase/
   seed.sql                     sample menu, options, zones, settings
   tests/                       database scenario tests (+ stubs for plain Postgres)
 src/
-  app/                         routes: / (home) · /menu · /checkout · /order/[token] · /account · /login · /welcome · /admin/* · /rider · /api/admin/team
+  app/                         routes: / (home) · /menu · /baybayin (+ /baybayin/booking/[token]) · /admin/rentals · /checkout · /order/[token] · /account · /login · /welcome · /admin/* · /rider · /api/admin/team
   components/customer/         menu, item sheet, cart, checkout, status page
   components/admin/            orders board, order detail, menu/options/zones/settings/summary
   lib/                         Supabase clients, cart, opening hours & time slots, formatting, sound
@@ -154,4 +155,4 @@ docs/                          SCHEMA.md, PHASE2.md, screenshots
 - **Phone validation** accepts `09XXXXXXXXX`, `+639…` or `639…` (spaces and dashes are fine) and stores everything as `09XXXXXXXXX`.
 - **Cash orders** are marked paid automatically when completed or delivered.
 
-Further reading: [Team & permissions](docs/TEAM.md) · [Delivery map](docs/MAPS.md) · [Database schema](docs/SCHEMA.md) · [Phase 2 roadmap](docs/PHASE2.md)
+Further reading: [Scooter rentals](docs/RENTALS.md) · [Team & permissions](docs/TEAM.md) · [Delivery map](docs/MAPS.md) · [Database schema](docs/SCHEMA.md) · [Phase 2 roadmap](docs/PHASE2.md)

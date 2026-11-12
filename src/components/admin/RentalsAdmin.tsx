@@ -1,0 +1,510 @@
+"use client";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Alert, Badge, PageLoader, Sheet, Spinner, Toggle } from "@/components/ui";
+import { ScooterPhoto } from "@/components/customer/ScooterPhoto";
+import { getAuthedSupabase, getSupabase } from "@/lib/supabase/client";
+import { formatPeso } from "@/lib/format";
+import { formatDateTime } from "@/lib/hours";
+import { uploadPublicImage } from "@/lib/upload";
+import { BOOKING_STATUS_LABEL, PAYMENT_LABEL, manilaDate, prettyDate, type BookingStatus, type RentalSettings, type Scooter } from "@/lib/rentals";
+import { useStaffAccess } from "./StaffAccess";
+
+interface Booking {
+  id: string;
+  booking_number: string;
+  scooter_id: string;
+  scooter_name: string;
+  customer_name: string;
+  customer_phone: string;
+  customer_email: string | null;
+  start_date: string;
+  end_date: string;
+  days: number;
+  daily_rate: number;
+  helmets: number;
+  delivery: boolean;
+  delivery_address: string | null;
+  delivery_fee: number;
+  total: number;
+  deposit_amount: number;
+  security_deposit: number;
+  license_path: string;
+  notes: string | null;
+  status: BookingStatus;
+  payment_status: string;
+  payment_expires_at: string | null;
+  deposit_paid_at: string | null;
+  picked_up_at: string | null;
+  returned_at: string | null;
+  cancel_reason: string | null;
+  created_at: string;
+}
+type Tab = "bookings" | "scooters" | "settings";
+const CANCEL_REASONS = ["Customer cancelled", "Scooter not available (repair)", "No-show at pickup", "Couldn't verify license"];
+
+export function RentalsAdmin() {
+  const [tab, setTab] = useState<Tab>("bookings");
+  return (
+    <div className="mx-auto max-w-4xl space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="font-display text-2xl font-bold">Baybayin rentals</h1>
+        <div role="tablist" aria-label="Rentals" className="flex gap-1 rounded-2xl bg-white p-1 shadow-card">
+          {(["bookings", "scooters", "settings"] as Tab[]).map((t) => (
+            <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)} className={`rounded-xl px-4 py-2 text-sm font-semibold capitalize ${tab === t ? "bg-coffee-800 text-cream" : "text-coffee-700"}`}>
+              {t}
+            </button>
+          ))}
+        </div>
+      </div>
+      {tab === "bookings" && <BookingsTab />}
+      {tab === "scooters" && <ScootersTab />}
+      {tab === "settings" && <SettingsTab />}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------- bookings
+function BookingsTab() {
+  const [list, setList] = useState<Booking[] | null>(null);
+  const [filter, setFilter] = useState<"active" | "awaiting" | "done" | "all">("active");
+  const [openId, setOpenId] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    const { data } = await getSupabase().from("rental_bookings").select("*").order("start_date").order("created_at");
+    setList((data as Booking[]) ?? []);
+  }, []);
+  useEffect(() => {
+    load();
+    let ch: ReturnType<ReturnType<typeof getSupabase>["channel"]> | null = null;
+    getAuthedSupabase().then((db) => {
+      ch = db.channel("rental-bookings-staff").on("postgres_changes", { event: "*", schema: "public", table: "rental_bookings" }, () => load()).subscribe();
+    });
+    return () => {
+      if (ch) getSupabase().removeChannel(ch);
+    };
+  }, [load]);
+
+  const now = Date.now();
+  const expired = (b: Booking) => b.status === "awaiting_deposit" && !!b.payment_expires_at && new Date(b.payment_expires_at).getTime() < now;
+  const shown = useMemo(
+    () =>
+      (list ?? []).filter((b) =>
+        filter === "all"
+          ? true
+          : filter === "active"
+            ? ["confirmed", "picked_up"].includes(b.status)
+            : filter === "awaiting"
+              ? b.status === "awaiting_deposit" && !expired(b)
+              : ["returned", "cancelled"].includes(b.status) || expired(b),
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [list, filter],
+  );
+  const today = manilaDate();
+  const open = list?.find((b) => b.id === openId) ?? null;
+
+  if (!list) return <PageLoader />;
+  return (
+    <section className="space-y-3">
+      <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Show">
+        {(
+          [
+            ["active", "Confirmed & on the road"],
+            ["awaiting", "Waiting for deposit"],
+            ["done", "Returned & cancelled"],
+            ["all", "All"],
+          ] as const
+        ).map(([k, label]) => (
+          <button key={k} role="radio" aria-checked={filter === k} onClick={() => setFilter(k)} className={`rounded-full px-4 py-2 text-sm font-semibold ${filter === k ? "bg-coffee-800 text-cream" : "bg-white text-coffee-800 shadow-card"}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+      {shown.length === 0 && <p className="card p-6 text-center text-coffee-700">No bookings here yet.</p>}
+      <ul className="grid gap-2">
+        {shown.map((b) => (
+          <li key={b.id}>
+            <button onClick={() => setOpenId(b.id)} className="card flex w-full flex-wrap items-center gap-3 p-4 text-left" data-testid="booking-row">
+              <span className="font-mono font-bold">{b.booking_number}</span>
+              <span className="min-w-0 flex-1">
+                <span className="block font-semibold">
+                  {b.customer_name} · {b.scooter_name}
+                </span>
+                <span className="block text-sm text-coffee-700">
+                  {prettyDate(b.start_date)} → {prettyDate(b.end_date)} · {b.days}d{b.delivery ? " · delivery" : ""}
+                  {b.start_date === today && b.status === "confirmed" && <strong className="text-sage-700"> · pickup today</strong>}
+                  {b.end_date === today && b.status === "picked_up" && <strong className="text-amber-800"> · due back today</strong>}
+                </span>
+              </span>
+              <Badge tone={b.status === "cancelled" || expired(b) ? "red" : b.status === "awaiting_deposit" ? "amber" : b.status === "picked_up" ? "blue" : "green"}>
+                {expired(b) ? "Expired" : BOOKING_STATUS_LABEL[b.status]}
+              </Badge>
+            </button>
+          </li>
+        ))}
+      </ul>
+      <BookingSheet booking={open} onClose={() => setOpenId(null)} onChanged={load} />
+    </section>
+  );
+}
+
+function BookingSheet({ booking: b, onClose, onChanged }: { booking: Booking | null; onClose: () => void; onChanged: () => void }) {
+  const { can } = useStaffAccess();
+  const [license, setLicense] = useState<string | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState(false);
+  const [reason, setReason] = useState("");
+
+  useEffect(() => {
+    setLicense(null);
+    setError(null);
+    setCancelling(false);
+    if (!b) return;
+    getSupabase()
+      .storage.from("license-photos")
+      .createSignedUrl(b.license_path, 600)
+      .then(({ data }) => setLicense(data?.signedUrl ?? null));
+  }, [b?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (!b) return null;
+  const update = async (label: string, patch: Partial<Booking>) => {
+    setBusy(label);
+    setError(null);
+    const { error } = await getSupabase().from("rental_bookings").update(patch).eq("id", b.id);
+    if (error) setError(error.message);
+    setBusy(null);
+    onChanged();
+  };
+  const refund = async () => {
+    if (!confirm(`Refund the ${formatPeso(b.deposit_amount)} deposit for ${b.booking_number} through HitPay?`)) return;
+    setBusy("refund");
+    setError(null);
+    const res = await fetch("/api/rentals/refund", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ booking_id: b.id }) });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) setError(j.error ?? "Refund failed.");
+    setBusy(null);
+    onChanged();
+  };
+  const paid = ["deposit_paid", "paid"].includes(b.payment_status);
+  const btn = (label: string, fn: () => void, cls = "btn-primary") => (
+    <button className={`${cls} w-full`} onClick={fn} disabled={!!busy}>
+      {busy === label ? <Spinner /> : label}
+    </button>
+  );
+  return (
+    <Sheet open onClose={onClose} title={b.booking_number} wide>
+      <div className="space-y-4 p-5">
+        <div className="flex flex-wrap gap-2">
+          <Badge tone={b.status === "cancelled" ? "red" : b.status === "awaiting_deposit" ? "amber" : "green"}>{BOOKING_STATUS_LABEL[b.status]}</Badge>
+          <Badge tone={paid ? "green" : b.payment_status === "refunded" ? "gray" : "amber"}>{PAYMENT_LABEL[b.payment_status] ?? b.payment_status}</Badge>
+          {b.status === "cancelled" && paid && <Badge tone="red">Refund needed</Badge>}
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1 text-sm">
+            <p className="text-lg font-bold">{b.customer_name}</p>
+            <p>
+              <a className="font-mono font-semibold underline" href={`tel:${b.customer_phone}`}>
+                {b.customer_phone}
+              </a>
+              {b.customer_email && <> · {b.customer_email}</>}
+            </p>
+            <p>
+              <strong>{b.scooter_name}</strong> · {b.helmets} helmet{b.helmets === 1 ? "" : "s"}
+            </p>
+            <p>
+              {prettyDate(b.start_date)} → {prettyDate(b.end_date)} ({b.days} day{b.days === 1 ? "" : "s"})
+            </p>
+            <p>{b.delivery ? <>Deliver to: <strong>{b.delivery_address}</strong></> : "Customer picks up"}</p>
+            {b.notes && <p className="rounded-xl bg-amber-50 px-3 py-2 text-amber-900">Note: {b.notes}</p>}
+            <dl className="space-y-0.5 border-t border-coffee-100 pt-2">
+              <div className="flex justify-between">
+                <dt>
+                  {b.days} × {formatPeso(b.daily_rate)}
+                  {b.delivery ? ` + delivery ${formatPeso(b.delivery_fee)}` : ""}
+                </dt>
+                <dd className="font-bold">{formatPeso(b.total)}</dd>
+              </div>
+              <div className="flex justify-between">
+                <dt>Deposit (online)</dt>
+                <dd>{formatPeso(b.deposit_amount)}</dd>
+              </div>
+              <div className="flex justify-between font-semibold">
+                <dt>Collect at pickup</dt>
+                <dd data-testid="collect-at-pickup">{formatPeso(b.payment_status === "paid" ? 0 : Number(b.total) - (paid ? Number(b.deposit_amount) : 0))}</dd>
+              </div>
+              {Number(b.security_deposit) > 0 && (
+                <div className="flex justify-between">
+                  <dt>+ security deposit (returnable)</dt>
+                  <dd>{formatPeso(b.security_deposit)}</dd>
+                </div>
+              )}
+            </dl>
+            <p className="text-xs text-coffee-600">
+              Booked {formatDateTime(b.created_at)}
+              {b.deposit_paid_at && ` · deposit paid ${formatDateTime(b.deposit_paid_at)}`}
+              {b.picked_up_at && ` · picked up ${formatDateTime(b.picked_up_at)}`}
+              {b.returned_at && ` · returned ${formatDateTime(b.returned_at)}`}
+            </p>
+            {b.cancel_reason && <p className="text-red-800">Cancelled: {b.cancel_reason}</p>}
+          </div>
+          <div>
+            <p className="label">Driver&apos;s license</p>
+            {license ? (
+              <a href={license} target="_blank" rel="noreferrer">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={license} alt={`Driver's license of ${b.customer_name}`} className="w-full rounded-2xl border border-coffee-200 object-contain" data-testid="license-photo" />
+              </a>
+            ) : (
+              <p className="text-sm text-coffee-600">Loading…</p>
+            )}
+            <p className="hint">Check the name matches and the license isn&apos;t expired at pickup.</p>
+          </div>
+        </div>
+        {error && <Alert>{error}</Alert>}
+        <div className="space-y-2">
+          {b.status === "confirmed" && btn("Mark picked up", () => update("Mark picked up", { status: "picked_up" }))}
+          {b.status === "picked_up" && btn("Mark returned", () => update("Mark returned", { status: "returned" }), "btn-sage")}
+          {b.payment_status === "deposit_paid" && ["confirmed", "picked_up"].includes(b.status) && btn("Balance collected", () => update("Balance collected", { payment_status: "paid" }), "btn-secondary")}
+          {b.status === "cancelled" && paid && (can("refunds") ? btn(`Refund ${formatPeso(b.deposit_amount)} deposit`, refund, "btn-danger") : <p className="text-sm font-semibold text-red-800">Ask someone with the Refunds permission to refund the deposit.</p>)}
+          {["awaiting_deposit", "confirmed"].includes(b.status) &&
+            (cancelling ? (
+              <div className="space-y-2 rounded-2xl bg-cream p-3">
+                <p className="font-semibold">Why are you cancelling?</p>
+                <div className="flex flex-wrap gap-2">
+                  {CANCEL_REASONS.map((r) => (
+                    <button key={r} className={`rounded-full border px-3 py-1.5 text-sm ${reason === r ? "border-coffee-700 bg-coffee-50" : "border-coffee-200"}`} onClick={() => setReason(r)}>
+                      {r}
+                    </button>
+                  ))}
+                </div>
+                <input className="input" aria-label="Cancel reason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reason" />
+                <div className="flex gap-2">
+                  <button className="btn-danger flex-1" disabled={reason.trim().length < 3 || !!busy} onClick={() => update("Cancel booking", { status: "cancelled", cancel_reason: reason.trim() })}>
+                    Cancel booking
+                  </button>
+                  <button className="btn-secondary" onClick={() => setCancelling(false)}>
+                    Keep
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button className="btn-ghost w-full text-red-700" onClick={() => setCancelling(true)}>
+                Cancel this booking…
+              </button>
+            ))}
+        </div>
+      </div>
+    </Sheet>
+  );
+}
+
+// ---------------------------------------------------------------- scooters
+const EMPTY_SCOOTER = { name: "", description: "", daily_rate: "", photo_url: null as string | null, is_active: true, sort_order: 0 };
+function ScootersTab() {
+  const [list, setList] = useState<Scooter[] | null>(null);
+  const [edit, setEdit] = useState<(typeof EMPTY_SCOOTER & { id?: string }) | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ tone: "red" | "green"; text: string } | null>(null);
+  const load = useCallback(async () => {
+    const { data } = await getSupabase().from("scooters").select("*").order("sort_order").order("name");
+    setList((data as Scooter[]) ?? []);
+  }, []);
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!edit) return;
+    const rate = Number(edit.daily_rate);
+    if (edit.name.trim().length < 2) return setMsg({ tone: "red", text: "Enter the scooter's name." });
+    if (!(rate > 0)) return setMsg({ tone: "red", text: "Enter the daily rate in pesos." });
+    setBusy(true);
+    const row = { name: edit.name.trim(), description: edit.description.trim() || null, daily_rate: rate, photo_url: edit.photo_url, is_active: edit.is_active, sort_order: Number(edit.sort_order) || 0 };
+    const { error } = edit.id ? await getSupabase().from("scooters").update(row).eq("id", edit.id) : await getSupabase().from("scooters").insert(row);
+    setBusy(false);
+    if (error) return setMsg({ tone: "red", text: error.message });
+    setMsg({ tone: "green", text: `${row.name} saved.` });
+    setEdit(null);
+    load();
+  };
+  const photo = async (f: File | undefined) => {
+    if (!f || !edit) return;
+    setBusy(true);
+    try {
+      const url = await uploadPublicImage(f, "scooters", { maxDim: 1200 });
+      setEdit({ ...edit, photo_url: url });
+    } catch (err) {
+      setMsg({ tone: "red", text: (err as Error).message });
+    }
+    setBusy(false);
+  };
+
+  if (!list) return <PageLoader />;
+  return (
+    <section className="space-y-3">
+      {msg && <Alert tone={msg.tone}>{msg.text}</Alert>}
+      <button className="btn-primary" onClick={() => setEdit({ ...EMPTY_SCOOTER, sort_order: list.length })}>
+        + Add scooter
+      </button>
+      {list.length === 0 && <p className="card p-6 text-center text-coffee-700">No scooters yet. Add your first one — customers can only book scooters listed here.</p>}
+      <ul className="grid gap-2">
+        {list.map((s) => (
+          <li key={s.id} className="card flex items-center gap-3 p-3" data-testid="scooter-row">
+            <ScooterPhoto src={s.photo_url} alt={s.name} className="h-16 w-16 shrink-0 rounded-xl" />
+            <span className="min-w-0 flex-1">
+              <span className="block font-bold">{s.name}</span>
+              <span className="block text-sm text-coffee-700">{formatPeso(s.daily_rate)}/day{s.description ? ` · ${s.description}` : ""}</span>
+            </span>
+            {!s.is_active && <Badge tone="gray">Hidden</Badge>}
+            <button className="btn-secondary btn-sm" onClick={() => setEdit({ id: s.id, name: s.name, description: s.description ?? "", daily_rate: String(s.daily_rate), photo_url: s.photo_url, is_active: s.is_active, sort_order: s.sort_order })}>
+              Edit
+            </button>
+          </li>
+        ))}
+      </ul>
+      <Sheet open={!!edit} onClose={() => setEdit(null)} title={edit?.id ? "Edit scooter" : "Add scooter"}>
+        {edit && (
+          <form onSubmit={save} className="space-y-3 p-5">
+            <div>
+              <label className="label" htmlFor="scooter-name">
+                Name
+              </label>
+              <input id="scooter-name" className="input" value={edit.name} onChange={(e) => setEdit({ ...edit, name: e.target.value })} maxLength={60} placeholder="Honda Click 125" />
+            </div>
+            <div>
+              <label className="label" htmlFor="scooter-desc">
+                Short description <span className="font-normal text-coffee-600">(optional)</span>
+              </label>
+              <input id="scooter-desc" className="input" value={edit.description} onChange={(e) => setEdit({ ...edit, description: e.target.value })} maxLength={120} placeholder="Automatic · good for 2 · with top box" />
+            </div>
+            <div>
+              <label className="label" htmlFor="scooter-rate">
+                Daily rate (₱)
+              </label>
+              <input id="scooter-rate" className="input" inputMode="decimal" value={edit.daily_rate} onChange={(e) => setEdit({ ...edit, daily_rate: e.target.value })} placeholder="500" />
+            </div>
+            <div className="flex items-center gap-3">
+              <ScooterPhoto src={edit.photo_url} alt="" className="h-20 w-20 rounded-xl" />
+              <label className="btn-secondary btn-sm cursor-pointer">
+                {busy ? <Spinner /> : edit.photo_url ? "Change photo" : "Add photo"}
+                <input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" aria-label="Scooter photo" onChange={(e) => photo(e.target.files?.[0])} />
+              </label>
+            </div>
+            <label className="flex items-center justify-between gap-3">
+              <span className="font-semibold">Show on the booking page</span>
+              <Toggle checked={edit.is_active} onChange={(v) => setEdit({ ...edit, is_active: v })} label="Show on the booking page" />
+            </label>
+            <button className="btn-primary w-full" disabled={busy}>
+              {busy ? <Spinner /> : "Save scooter"}
+            </button>
+            <p className="hint">Price changes apply to new bookings only. To stop renting a scooter, hide it instead of deleting (past bookings keep it).</p>
+          </form>
+        )}
+      </Sheet>
+    </section>
+  );
+}
+
+// ---------------------------------------------------------------- settings
+function SettingsTab() {
+  const [s, setS] = useState<RentalSettings | null>(null);
+  const [hitpay, setHitpay] = useState<{ configured: boolean; testMode: boolean } | null>(null);
+  const [scooterCount, setScooterCount] = useState(0);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ tone: "red" | "green"; text: string } | null>(null);
+  useEffect(() => {
+    const db = getSupabase();
+    db.from("rental_settings").select("*").eq("id", 1).single().then(({ data }) => setS(data as RentalSettings));
+    db.from("scooters").select("id", { count: "exact", head: true }).eq("is_active", true).then(({ count }) => setScooterCount(count ?? 0));
+    fetch("/api/payments/status")
+      .then((r) => r.json())
+      .then(setHitpay)
+      .catch(() => setHitpay({ configured: false, testMode: false }));
+  }, []);
+  if (!s) return <PageLoader />;
+  const set = <K extends keyof RentalSettings>(k: K, v: RentalSettings[K]) => setS({ ...s, [k]: v });
+  const ready = !!hitpay?.configured;
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setMsg(null);
+    const { error } = await getSupabase()
+      .from("rental_settings")
+      .update({
+        bookings_enabled: s.bookings_enabled && ready,
+        deposit_percent: Math.min(100, Math.max(10, Number(s.deposit_percent) || 30)),
+        security_deposit: Math.max(0, Number(s.security_deposit) || 0),
+        security_deposit_note: s.security_deposit_note?.trim() || null,
+        delivery_fee: Math.max(0, Number(s.delivery_fee) || 0),
+        pickup_note: s.pickup_note?.trim() || null,
+        max_days: Math.min(90, Math.max(1, Number(s.max_days) || 30)),
+      })
+      .eq("id", 1);
+    setBusy(false);
+    setMsg(error ? { tone: "red", text: error.message } : { tone: "green", text: "Rental settings saved." });
+  };
+  const num = (k: keyof RentalSettings) => ({ value: String(s[k] ?? ""), onChange: (e: React.ChangeEvent<HTMLInputElement>) => set(k, e.target.value as never) });
+  return (
+    <form onSubmit={save} className="card space-y-4 p-5">
+      {msg && <Alert tone={msg.tone}>{msg.text}</Alert>}
+      <label className="flex items-center justify-between gap-3">
+        <span>
+          <span className="block font-bold">Accept bookings</span>
+          <span className="text-sm text-coffee-700">Off = the Baybayin page shows &ldquo;Coming soon&rdquo;. On = customers can book and pay the deposit online.</span>
+        </span>
+        <Toggle checked={s.bookings_enabled && ready} onChange={(v) => set("bookings_enabled", v)} disabled={!ready} label="Accept bookings" />
+      </label>
+      {hitpay && !ready && <p className="rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-900">Online payment (HitPay) isn&apos;t set up on the website yet, so bookings can&apos;t open. See docs/PAYMENTS.md.</p>}
+      {ready && hitpay?.testMode && <p className="rounded-2xl bg-sky-100 px-4 py-3 text-sm text-sky-900"><strong>Test mode:</strong> HitPay sandbox is active — deposits aren&apos;t real money.</p>}
+      {s.bookings_enabled && scooterCount === 0 && <p className="rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-900">No scooters are shown yet — add at least one in the Scooters tab.</p>}
+      <div className="grid gap-3 sm:grid-cols-3">
+        <div>
+          <label className="label" htmlFor="deposit-percent">
+            Online deposit (%)
+          </label>
+          <input id="deposit-percent" className="input" inputMode="numeric" {...num("deposit_percent")} />
+          <p className="hint">10–100% of the rental, paid when booking.</p>
+        </div>
+        <div>
+          <label className="label" htmlFor="delivery-fee">
+            Delivery fee (₱)
+          </label>
+          <input id="delivery-fee" className="input" inputMode="decimal" {...num("delivery_fee")} />
+          <p className="hint">0 = free delivery.</p>
+        </div>
+        <div>
+          <label className="label" htmlFor="max-days">
+            Longest rental (days)
+          </label>
+          <input id="max-days" className="input" inputMode="numeric" {...num("max_days")} />
+        </div>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div>
+          <label className="label" htmlFor="security-deposit">
+            Security deposit at pickup (₱)
+          </label>
+          <input id="security-deposit" className="input" inputMode="decimal" {...num("security_deposit")} />
+          <p className="hint">Shown to customers; collected in cash at pickup and returned after. 0 = none.</p>
+        </div>
+        <div>
+          <label className="label" htmlFor="security-note">
+            Security deposit note <span className="font-normal text-coffee-600">(optional)</span>
+          </label>
+          <input id="security-note" className="input" value={s.security_deposit_note ?? ""} onChange={(e) => set("security_deposit_note", e.target.value)} maxLength={120} placeholder="or leave a valid ID" />
+        </div>
+      </div>
+      <div>
+        <label className="label" htmlFor="pickup-note">
+          Pickup instructions
+        </label>
+        <input id="pickup-note" className="input" value={s.pickup_note ?? ""} onChange={(e) => set("pickup_note", e.target.value)} maxLength={200} placeholder="At Pahuway Cafe, Poblacion — 8 AM to 6 PM" />
+      </div>
+      <button className="btn-primary w-full" disabled={busy}>
+        {busy ? <Spinner /> : "Save rental settings"}
+      </button>
+    </form>
+  );
+}

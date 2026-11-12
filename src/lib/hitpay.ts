@@ -64,13 +64,25 @@ export interface CheckoutOrder {
 
 /** Creates a hosted payment page for exactly the order total. */
 export async function createPaymentRequest(order: CheckoutOrder, urls: { redirect: string; webhook: string }) {
+  return createHostedPayment(
+    { amount: Number(order.total), reference: order.order_number, purpose: `Pahuway Cafe order ${order.order_number}`, name: order.customer_name, phone: order.customer_phone },
+    urls,
+  );
+}
+
+/** A hosted HitPay payment page for an exact amount (orders, rental deposits…). */
+export async function createHostedPayment(
+  p: { amount: number; reference: string; purpose: string; name: string; phone: string; email?: string | null },
+  urls: { redirect: string; webhook: string },
+) {
   const res = await call<{ id: string; url: string; status: string }>("POST", "/v1/payment-requests", {
-    amount: Number(order.total).toFixed(2),
+    amount: Number(p.amount).toFixed(2),
     currency: "PHP",
-    purpose: `Pahuway Cafe order ${order.order_number}`,
-    reference_number: order.order_number,
-    name: order.customer_name.slice(0, 100),
-    phone: order.customer_phone,
+    purpose: p.purpose.slice(0, 255),
+    reference_number: p.reference,
+    name: p.name.slice(0, 100),
+    phone: p.phone,
+    email: p.email || undefined,
     redirect_url: urls.redirect,
     webhook: urls.webhook,
     allow_repeated_payments: "false",

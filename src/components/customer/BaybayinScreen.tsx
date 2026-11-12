@@ -4,6 +4,9 @@ import { StoreHeader } from "./Header";
 import { Badge } from "@/components/ui";
 import { useStoreSettings } from "@/lib/store-settings";
 import { brandOf, welcomeTexts } from "@/lib/brands";
+import { useRentalSettings } from "@/lib/rentals";
+import { ScooterBooking } from "./ScooterBooking";
+import { PageLoader } from "@/components/ui";
 
 /** Baybayin scooter rental — a "coming soon" page with Baybayin's own header (rental pages come later). */
 export function BaybayinScreen() {
@@ -11,6 +14,31 @@ export function BaybayinScreen() {
   const bay = brandOf(settings, "baybayin");
   const cafe = brandOf(settings, "cafe");
   const t = welcomeTexts(settings);
+  const rs = useRentalSettings();
+  if (rs?.bookings_enabled)
+    return (
+      <div className="min-h-screen">
+        <StoreHeader settings={settings} open={open} brand="baybayin" back="/" />
+        <main className="mx-auto max-w-lg px-4 py-5">
+          <div className="mb-4 flex items-center gap-3">
+            {bay.logo ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={bay.logo} alt="" className="h-14 w-14 rounded-2xl bg-white object-contain p-1 shadow-card" />
+            ) : (
+              <span aria-hidden className="flex h-14 w-14 items-center justify-center rounded-2xl bg-sky-100 text-3xl">
+                {bay.emoji}
+              </span>
+            )}
+            <div>
+              <h1 className="font-display text-2xl font-bold leading-tight">Rent a scooter</h1>
+              <p className="text-coffee-700">{bay.tagline}</p>
+            </div>
+          </div>
+          <ScooterBooking rs={rs} brandName={bay.name} />
+        </main>
+      </div>
+    );
+  if (!rs) return <PageLoader />;
   return (
     <div className="min-h-screen">
       <StoreHeader settings={settings} open={open} brand="baybayin" back="/" />
