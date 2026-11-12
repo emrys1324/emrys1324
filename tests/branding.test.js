@@ -5,6 +5,8 @@ const { chromium, devices } = require("playwright");
 const path = require("path");
 const BASE = process.env.BASE_URL || "http://localhost:3000";
 const F = (n) => path.join(__dirname, "fixtures", n);
+const sqlBay = () =>
+  require("child_process").execFileSync("docker", ["exec", "-i", "supabase_db_pahuway-cafe", "psql", "-U", "postgres", "-Atc", "select coalesce(baybayin_logo_url, '') from store_settings"]).toString().trim();
 const SHOTS = path.join(__dirname, "../docs/screenshots/");
 const assert = (c, m) => {
   if (!c) throw new Error("FAIL: " + m);
@@ -119,6 +121,25 @@ const assert = (c, m) => {
   await cust.waitForFunction(() => document.querySelector("[data-testid=store-title]")?.textContent?.trim() === "Isla Café Live", null, { timeout: 8000 });
   assert(true, "store name changes live on an open customer page");
 
+  // ---- Baybayin logo on the home page's scooter card
+  await cust.goto(BASE + "/");
+  await cust.getByTestId("choose-scooter").waitFor();
+  assert((await cust.getByTestId("baybayin-logo").count()) === 0, "home: scooter card shows 🛵 until a Baybayin logo is uploaded");
+  await admin.setInputFiles("input[aria-label='Upload Baybayin logo']", F("test-logo-small.png"));
+  await admin.getByText("Logo is too small").waitFor();
+  await admin.setInputFiles("input[aria-label='Upload Baybayin logo']", F("test-logo.png"));
+  await admin.getByText("Baybayin logo uploaded — press Save settings").waitFor();
+  const bayUrl = await admin.getByTestId("baybayin-logo-preview").getAttribute("src");
+  assert(bayUrl.includes("/storage/v1/object/public/menu-photos/branding/"), "Baybayin logo uploads to storage with a preview");
+  await admin.getByRole("button", { name: "Save settings" }).click();
+  await admin.getByText("Settings saved.").waitFor();
+  await cust.waitForFunction((u) => document.querySelector("[data-testid=baybayin-logo]")?.getAttribute("src") === u, bayUrl, { timeout: 8000 });
+  assert(true, "home page scooter card shows the Baybayin logo (live, no reload)");
+  await cust.reload();
+  await cust.getByTestId("baybayin-logo").waitFor();
+  assert((await cust.getByTestId("choose-scooter").getAttribute("aria-disabled")) === "true", "…after reload too, and the card stays Coming soon");
+  await admin.getByRole("button", { name: "Remove", exact: true }).click();
+
   // revert to defaults
   await admin.locator("#store-name").fill("Pahuway Cafe");
   await admin.locator("#staff-title").fill("Pahuway Staff");
@@ -132,6 +153,7 @@ const assert = (c, m) => {
   await cust.getByRole("heading", { name: "Coffee", exact: true }).waitFor();
   assert((await cust.locator("header img").first().getAttribute("src")) === "/logo.svg" && (await cust.getByTestId("brand-background").count()) === 0, "defaults restored");
   assert((await cust.getByTestId("store-title").textContent()).trim() === "Pahuway Cafe", "store name restored");
+  assert(sqlBay() === "", "Baybayin logo removed (scooter card back to 🛵)");
   const restoredBg = await cust.getByTestId("customer-header").evaluate((el) => getComputedStyle(el).backgroundColor);
   assert(restoredBg.startsWith("rgba(251, 247, 240"), "customer header back to default cream");
 

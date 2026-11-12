@@ -60,9 +60,14 @@ export function HomeChooser() {
               data-testid="choose-scooter"
               className="card flex cursor-not-allowed items-center gap-4 p-4 opacity-80 sm:p-5"
             >
-              <span aria-hidden className="flex h-20 w-20 shrink-0 items-center justify-center rounded-2xl bg-sky-100 text-4xl sm:h-24 sm:w-24">
-                🛵
-              </span>
+              {settings?.baybayin_logo_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={settings.baybayin_logo_url} alt="" data-testid="baybayin-logo" className="h-20 w-20 shrink-0 rounded-2xl bg-white object-contain p-1 sm:h-24 sm:w-24" />
+              ) : (
+                <span aria-hidden className="flex h-20 w-20 shrink-0 items-center justify-center rounded-2xl bg-sky-100 text-4xl sm:h-24 sm:w-24">
+                  🛵
+                </span>
+              )}
               <span className="min-w-0 flex-1">
                 <span className="flex flex-wrap items-center gap-2">
                   <span className="font-display text-xl font-bold leading-snug">Rent a scooter from Baybayin</span>

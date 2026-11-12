@@ -53,6 +53,7 @@ export function SettingsAdmin() {
         contact_phone: s.contact_phone || null,
         contact_email: s.contact_email || null,
         logo_url: s.logo_url || null,
+        baybayin_logo_url: s.baybayin_logo_url || null,
         background_url: s.background_url || null,
         background_fade: Math.min(95, Math.max(40, Number(s.background_fade) || 85)),
         online_payments_enabled: !!s.online_payments_enabled,
@@ -225,19 +226,20 @@ function BrandingSection({
   uploading: boolean;
   setUploading: (v: boolean) => void;
 }) {
-  const upload = async (file: File | undefined, kind: "logo" | "background") => {
+  const upload = async (file: File | undefined, kind: "logo" | "background" | "baybayin") => {
     if (!file) return;
     setUploading(true);
     setMsg(null);
     try {
       const size = await imageSize(file);
       if (!size) throw new Error("That file doesn't look like an image. Please use JPG, PNG or WebP.");
-      if (kind === "logo" && Math.min(size.w, size.h) < 128) throw new Error("Logo is too small — please use at least 256 × 256 pixels.");
+      if (kind !== "background" && Math.min(size.w, size.h) < 128) throw new Error("Logo is too small — please use at least 256 × 256 pixels.");
       if (kind === "background" && Math.max(size.w, size.h) < 1000) throw new Error("Background is too small — please use at least 1600 pixels wide so it stays sharp.");
       const url = await uploadPublicImage(file, "branding", { maxDim: kind === "background" ? 2400 : 800 });
-      set(kind === "logo" ? "logo_url" : "background_url", url);
+      set(kind === "logo" ? "logo_url" : kind === "baybayin" ? "baybayin_logo_url" : "background_url", url);
       const squareNote = kind === "logo" && Math.abs(size.w - size.h) > Math.min(size.w, size.h) * 0.1 ? " Tip: a square logo looks best — it's shown in a circle." : "";
-      setMsg({ tone: "green", text: `${kind === "logo" ? "Logo" : "Background"} uploaded — press Save settings to publish it.${squareNote}` });
+      const what = kind === "logo" ? "Logo" : kind === "baybayin" ? "Baybayin logo" : "Background";
+      setMsg({ tone: "green", text: `${what} uploaded — press Save settings to publish it.${squareNote}` });
     } catch (err) {
       setMsg({ tone: "red", text: (err as Error).message });
     }
@@ -274,6 +276,33 @@ function BrandingSection({
             )}
           </div>
           <p className="hint">Square image, at least 256 × 256 px (PNG with a transparent or solid background works best). Max 5 MB.</p>
+        </div>
+      </div>
+
+      {/* Baybayin (scooter rental) logo — shown on the home page card */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+        {s.baybayin_logo_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={s.baybayin_logo_url} alt="Current Baybayin logo" className="h-24 w-24 shrink-0 rounded-2xl border border-coffee-200 bg-white object-contain p-1" data-testid="baybayin-logo-preview" />
+        ) : (
+          <span aria-hidden className="flex h-24 w-24 shrink-0 items-center justify-center rounded-2xl bg-sky-100 text-4xl">
+            🛵
+          </span>
+        )}
+        <div className="flex-1 space-y-2">
+          <p className="font-bold">Baybayin logo</p>
+          <div className="flex flex-wrap gap-2">
+            <label className="btn-secondary btn-sm cursor-pointer">
+              {uploading ? <Spinner /> : s.baybayin_logo_url ? "Change Baybayin logo" : "Upload Baybayin logo"}
+              <input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" aria-label="Upload Baybayin logo" onChange={(e) => upload(e.target.files?.[0], "baybayin")} />
+            </label>
+            {s.baybayin_logo_url && (
+              <button type="button" className="btn-ghost btn-sm" onClick={() => set("baybayin_logo_url", null)}>
+                Remove
+              </button>
+            )}
+          </div>
+          <p className="hint">Shown on the &ldquo;Rent a scooter from Baybayin&rdquo; card on the home page. Square works best, at least 256 × 256 px. Max 5 MB.</p>
         </div>
       </div>
 
