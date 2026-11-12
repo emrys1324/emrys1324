@@ -2,8 +2,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { Alert, PageLoader, Spinner, Toggle } from "@/components/ui";
 import { getSupabase } from "@/lib/supabase/client";
-import { uploadPublicImage } from "@/lib/upload";
-import { DEFAULT_LOGO, useStoreSettings } from "@/lib/store-settings";
+import { uploadPublicImage, uploadSiteIcons } from "@/lib/upload";
+import { brandOf, DEFAULTS, DEFAULT_LOGO, type Brand } from "@/lib/brands";
+import { useStoreSettings } from "@/lib/store-settings";
 import { BackgroundLayer } from "@/components/BrandBackground";
 import { DEFAULT_STAFF_HEADER, headerTheme, isHex } from "@/lib/color";
 import type { StoreSettings } from "@/lib/types";
@@ -54,6 +55,19 @@ export function SettingsAdmin() {
         contact_email: s.contact_email || null,
         logo_url: s.logo_url || null,
         baybayin_logo_url: s.baybayin_logo_url || null,
+        site_name: clean(s.site_name),
+        site_tagline: clean(s.site_tagline),
+        site_logo_url: s.site_logo_url || null,
+        site_header_color: isHex(s.site_header_color) ? s.site_header_color : null,
+        welcome_title: clean(s.welcome_title),
+        welcome_subtitle: clean(s.welcome_subtitle),
+        cafe_card_text: clean(s.cafe_card_text),
+        baybayin_card_text: clean(s.baybayin_card_text),
+        store_tagline: clean(s.store_tagline),
+        baybayin_name: clean(s.baybayin_name),
+        baybayin_tagline: clean(s.baybayin_tagline),
+        baybayin_header_color: isHex(s.baybayin_header_color) ? s.baybayin_header_color : null,
+        site_icons: s.site_icons ?? null,
         background_url: s.background_url || null,
         background_fade: Math.min(95, Math.max(40, Number(s.background_fade) || 85)),
         online_payments_enabled: !!s.online_payments_enabled,
@@ -194,6 +208,9 @@ export function SettingsAdmin() {
   );
 }
 
+/** Trimmed text, or null (= use the default). */
+const clean = (v: string | null | undefined) => v?.trim() || null;
+
 type SetFn = <K extends keyof StoreSettings>(k: K, v: StoreSettings[K]) => void;
 
 /** Reads an image file and returns its pixel size (for friendly warnings). */
@@ -213,6 +230,14 @@ function imageSize(file: File): Promise<{ w: number; h: number } | null> {
   });
 }
 
+type BrandTab = "site" | "cafe" | "baybayin";
+type UploadKind = "logo" | "site_logo" | "baybayin" | "background";
+const BRAND_TABS: { key: BrandTab; label: string; hint: string }[] = [
+  { key: "site", label: "Welcome page", hint: "The home page where customers choose the café or scooter rental, plus the website icon." },
+  { key: "cafe", label: "Pahuway Cafe", hint: "Header on the menu, checkout, order status and account pages." },
+  { key: "baybayin", label: "Baybayin", hint: "Header on the Baybayin scooter rental pages (now a Coming soon page) and its home-page card." },
+];
+
 function BrandingSection({
   s,
   set,
@@ -226,7 +251,8 @@ function BrandingSection({
   uploading: boolean;
   setUploading: (v: boolean) => void;
 }) {
-  const upload = async (file: File | undefined, kind: "logo" | "background" | "baybayin") => {
+  const [tab, setTab] = useState<BrandTab>("site");
+  const upload = async (file: File | undefined, kind: UploadKind) => {
     if (!file) return;
     setUploading(true);
     setMsg(null);
@@ -236,18 +262,35 @@ function BrandingSection({
       if (kind !== "background" && Math.min(size.w, size.h) < 128) throw new Error("Logo is too small — please use at least 256 × 256 pixels.");
       if (kind === "background" && Math.max(size.w, size.h) < 1000) throw new Error("Background is too small — please use at least 1600 pixels wide so it stays sharp.");
       const url = await uploadPublicImage(file, "branding", { maxDim: kind === "background" ? 2400 : 800 });
-      set(kind === "logo" ? "logo_url" : kind === "baybayin" ? "baybayin_logo_url" : "background_url", url);
-      const squareNote = kind === "logo" && Math.abs(size.w - size.h) > Math.min(size.w, size.h) * 0.1 ? " Tip: a square logo looks best — it's shown in a circle." : "";
-      const what = kind === "logo" ? "Logo" : kind === "baybayin" ? "Baybayin logo" : "Background";
+      const field = ({ logo: "logo_url", site_logo: "site_logo_url", baybayin: "baybayin_logo_url", background: "background_url" } as const)[kind];
+      set(field, url);
+      const squareNote = kind !== "background" && Math.abs(size.w - size.h) > Math.min(size.w, size.h) * 0.1 ? " Tip: a square logo looks best — it's shown in a circle." : "";
+      const what = { logo: "Logo", site_logo: "Welcome page logo", baybayin: "Baybayin logo", background: "Background" }[kind];
       setMsg({ tone: "green", text: `${what} uploaded — press Save settings to publish it.${squareNote}` });
     } catch (err) {
       setMsg({ tone: "red", text: (err as Error).message });
     }
     setUploading(false);
   };
+  const uploadIcon = async (file: File | undefined) => {
+    if (!file) return;
+    setUploading(true);
+    setMsg(null);
+    try {
+      set("site_icons", await uploadSiteIcons(file));
+      setMsg({ tone: "green", text: "Website icon ready — press Save settings to publish it. Browsers can take a little while to show a new tab icon." });
+    } catch (err) {
+      setMsg({ tone: "red", text: (err as Error).message });
+    }
+    setUploading(false);
+  };
 
-  const logo = s.logo_url || DEFAULT_LOGO;
+  const site = brandOf(s, "site");
+  const cafe = brandOf(s, "cafe");
+  const bay = brandOf(s, "baybayin");
   const fade = s.background_fade ?? 85;
+  const active = BRAND_TABS.find((t) => t.key === tab)!;
+  const text = (k: keyof StoreSettings) => ({ value: (s[k] as string | null | undefined) ?? "", onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => set(k, e.target.value as never) });
 
   return (
     <section className="card space-y-5 p-5" aria-labelledby="branding-title">
@@ -255,70 +298,125 @@ function BrandingSection({
         <h2 id="branding-title" className="section-title">
           Branding
         </h2>
-        <p className="text-sm text-coffee-700">Your logo and background appear on the website and inside the Isla app as soon as you save.</p>
+        <p className="text-sm text-coffee-700">Each part of the site has its own header. Changes appear on the website and inside the Isla app as soon as you save.</p>
       </div>
 
-      {/* Logo */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={logo} alt="Current logo" className="h-24 w-24 shrink-0 rounded-full border border-coffee-200 bg-white object-cover" data-testid="logo-preview" />
-        <div className="flex-1 space-y-2">
-          <p className="font-bold">Logo</p>
-          <div className="flex flex-wrap gap-2">
-            <label className="btn-secondary btn-sm cursor-pointer">
-              {uploading ? <Spinner /> : s.logo_url ? "Change logo" : "Upload logo"}
-              <input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" aria-label="Upload logo" onChange={(e) => upload(e.target.files?.[0], "logo")} />
-            </label>
-            {s.logo_url && (
-              <button type="button" className="btn-ghost btn-sm" onClick={() => set("logo_url", null)}>
-                Use default logo
-              </button>
-            )}
-          </div>
-          <p className="hint">Square image, at least 256 × 256 px (PNG with a transparent or solid background works best). Max 5 MB.</p>
-        </div>
+      <div role="tablist" aria-label="Which branding" className="flex flex-wrap gap-1 rounded-2xl bg-cream p-1">
+        {BRAND_TABS.map((t) => (
+          <button
+            key={t.key}
+            type="button"
+            role="tab"
+            id={`brand-tab-${t.key}`}
+            aria-selected={tab === t.key}
+            aria-controls="brand-panel"
+            onClick={() => setTab(t.key)}
+            className={`flex-1 rounded-xl px-3 py-2 text-sm font-semibold ${tab === t.key ? "bg-white text-coffee-900 shadow-card" : "text-coffee-700 hover:bg-white/60"}`}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
 
-      {/* Baybayin (scooter rental) logo — shown on the home page card */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-        {s.baybayin_logo_url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={s.baybayin_logo_url} alt="Current Baybayin logo" className="h-24 w-24 shrink-0 rounded-2xl border border-coffee-200 bg-white object-contain p-1" data-testid="baybayin-logo-preview" />
-        ) : (
-          <span aria-hidden className="flex h-24 w-24 shrink-0 items-center justify-center rounded-2xl bg-sky-100 text-4xl">
-            🛵
-          </span>
+      <div role="tabpanel" id="brand-panel" aria-labelledby={`brand-tab-${tab}`} className="space-y-5">
+        <p className="text-sm text-coffee-700">{active.hint}</p>
+
+        {tab === "site" && (
+          <>
+            <BrandHeaderPreview brand={site} testId="site-header-preview" />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <TextInput id="site-name" label="Header title" placeholder={cafe.name} maxLength={40} hint="Empty = the café's name." {...text("site_name")} />
+              <TextInput id="site-tagline" label="Tagline" placeholder={cafe.tagline} maxLength={60} hint="Small line under the title (wider screens)." {...text("site_tagline")} />
+            </div>
+            <LogoField
+              label="Logo"
+              preview={site.logo}
+              emoji={site.emoji}
+              ariaUpload="Upload welcome page logo"
+              testId="site-logo-preview"
+              uploading={uploading}
+              hasCustom={!!s.site_logo_url}
+              clearLabel="Use the café logo"
+              onUpload={(f) => upload(f, "site_logo")}
+              onClear={() => set("site_logo_url", null)}
+              hint="Square image, at least 256 × 256 px. Empty = the café's logo."
+            />
+            <ColorField id="site-header-color" label="Welcome page header colour" value={s.site_header_color ?? null} fallback={isHex(cafe.color) ? cafe.color : "#fbf7f0"} onChange={(v) => set("site_header_color", v)} />
+            <div className="space-y-3 border-t border-coffee-100 pt-5">
+              <p className="font-bold">Welcome text &amp; cards</p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <TextInput id="welcome-title-input" label="Big title" placeholder={DEFAULTS.welcomeTitle} maxLength={60} {...text("welcome_title")} />
+                <TextInput id="welcome-subtitle-input" label="Line under the title" placeholder={DEFAULTS.welcomeSubtitle} maxLength={120} {...text("welcome_subtitle")} />
+              </div>
+              <TextInput id="cafe-card-text" label={`“Order from ${cafe.name}” card`} placeholder={DEFAULTS.cafeCard} maxLength={140} multiline {...text("cafe_card_text")} />
+              <TextInput id="baybayin-card-text" label={`“Rent a scooter from ${bay.name}” card`} placeholder={DEFAULTS.baybayinCard} maxLength={140} multiline hint="Also shown on the Baybayin Coming soon page." {...text("baybayin_card_text")} />
+              <p className="hint">Leave any field empty to use the text shown in grey.</p>
+            </div>
+            <SiteIconField icons={s.site_icons ?? null} uploading={uploading} onUpload={uploadIcon} onClear={() => set("site_icons", null)} />
+          </>
         )}
-        <div className="flex-1 space-y-2">
-          <p className="font-bold">Baybayin logo</p>
-          <div className="flex flex-wrap gap-2">
-            <label className="btn-secondary btn-sm cursor-pointer">
-              {uploading ? <Spinner /> : s.baybayin_logo_url ? "Change Baybayin logo" : "Upload Baybayin logo"}
-              <input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" aria-label="Upload Baybayin logo" onChange={(e) => upload(e.target.files?.[0], "baybayin")} />
-            </label>
-            {s.baybayin_logo_url && (
-              <button type="button" className="btn-ghost btn-sm" onClick={() => set("baybayin_logo_url", null)}>
-                Remove
-              </button>
-            )}
-          </div>
-          <p className="hint">Shown on the &ldquo;Rent a scooter from Baybayin&rdquo; card on the home page. Square works best, at least 256 × 256 px. Max 5 MB.</p>
-        </div>
+
+        {tab === "cafe" && (
+          <>
+            <BrandHeaderPreview brand={cafe} testId="customer-header-preview" showOpen />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <TextInput id="store-name" label="Store name (header title)" placeholder={DEFAULTS.cafeName} maxLength={40} {...text("store_name")} />
+              <TextInput id="store-tagline" label="Tagline" placeholder={DEFAULTS.cafeTagline} maxLength={60} hint="Small line under the name (wider screens)." {...text("store_tagline")} />
+            </div>
+            <LogoField
+              label="Logo"
+              preview={cafe.logo}
+              emoji={cafe.emoji}
+              ariaUpload="Upload logo"
+              testId="logo-preview"
+              uploading={uploading}
+              hasCustom={!!s.logo_url}
+              clearLabel="Use default logo"
+              onUpload={(f) => upload(f, "logo")}
+              onClear={() => set("logo_url", null)}
+              hint="Square image, at least 256 × 256 px (PNG with a transparent or solid background works best). Max 5 MB."
+            />
+            <ColorField id="header-color" label="Header colour" value={s.header_color} fallback="#fbf7f0" onChange={(v) => set("header_color", v)} />
+          </>
+        )}
+
+        {tab === "baybayin" && (
+          <>
+            <BrandHeaderPreview brand={bay} testId="baybayin-header-preview" />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <TextInput id="baybayin-name" label="Name (header title)" placeholder={DEFAULTS.baybayinName} maxLength={40} {...text("baybayin_name")} />
+              <TextInput id="baybayin-tagline" label="Tagline" placeholder={DEFAULTS.baybayinTagline} maxLength={60} {...text("baybayin_tagline")} />
+            </div>
+            <LogoField
+              label="Baybayin logo"
+              preview={bay.logo}
+              emoji={bay.emoji}
+              ariaUpload="Upload Baybayin logo"
+              testId="baybayin-logo-preview"
+              uploading={uploading}
+              hasCustom={!!s.baybayin_logo_url}
+              clearLabel="Remove"
+              onUpload={(f) => upload(f, "baybayin")}
+              onClear={() => set("baybayin_logo_url", null)}
+              hint="Shown in the Baybayin header, on its home-page card and Coming soon page. Square works best, at least 256 × 256 px. Max 5 MB."
+            />
+            <ColorField id="baybayin-header-color" label="Baybayin header colour" value={s.baybayin_header_color ?? null} fallback="#fbf7f0" onChange={(v) => set("baybayin_header_color", v)} />
+          </>
+        )}
       </div>
 
-      {/* Background */}
-      <div className="space-y-3">
-        <p className="font-bold">Background image</p>
+      {/* Background (all customer pages) */}
+      <div className="space-y-3 border-t border-coffee-100 pt-5">
+        <p className="font-bold">Background image <span className="font-normal text-coffee-600">(all customer pages)</span></p>
         <div className="relative isolate h-44 overflow-hidden rounded-2xl border border-coffee-200 bg-cream" data-testid="background-preview">
           {s.background_url ? (
             <BackgroundLayer url={s.background_url} fade={fade} fixed={false} />
           ) : (
             <div className="absolute inset-0 flex items-center justify-center text-sm text-coffee-600">No background — plain cream</div>
           )}
-          {/* sample content so you can judge readability */}
           <div className="absolute bottom-3 left-3 right-3 flex items-center gap-3 rounded-2xl bg-white p-3 shadow-card">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={logo} alt="" className="h-10 w-10 rounded-full object-cover" />
+            <img src={cafe.logo ?? undefined} alt="" className="h-10 w-10 rounded-full object-cover" />
             <div className="flex-1">
               <p className="font-bold leading-tight">Café Latte</p>
               <p className="text-sm text-coffee-700">Preview of a menu card</p>
@@ -343,27 +441,155 @@ function BrandingSection({
             <label className="label" htmlFor="fade">
               Fade: {fade}% <span className="font-normal text-coffee-600">(higher = softer photo, easier to read)</span>
             </label>
-            <input
-              id="fade"
-              type="range"
-              min={40}
-              max={95}
-              step={5}
-              value={fade}
-              onChange={(e) => set("background_fade", Number(e.target.value))}
-              className="w-full accent-coffee-700"
-            />
+            <input id="fade" type="range" min={40} max={95} step={5} value={fade} onChange={(e) => set("background_fade", Number(e.target.value))} className="w-full accent-coffee-700" />
           </div>
         )}
         <p className="hint">Landscape photo, at least 1600 px wide (e.g. your café interior or a coffee close-up). Shown behind customer pages only, not the staff screens. Max 5 MB.</p>
       </div>
 
-      <HeaderSettings s={s} set={set} logo={logo} />
+      <StaffHeaderSettings s={s} set={set} logo={cafe.logo ?? DEFAULT_LOGO} />
 
       <p className="rounded-2xl bg-cream-100 px-4 py-3 text-sm text-coffee-700">
-        The icon on phones&apos; home screens (the Isla app icon) is set when the app is published to the stores and only changes with an app update.
+        The Isla app&apos;s icon on phones (from the app stores) is set when the app is published and only changes with an app update. The website icon above is for browsers and &ldquo;Add to Home Screen&rdquo;.
       </p>
     </section>
+  );
+}
+
+function BrandHeaderPreview({ brand, testId, showOpen = false }: { brand: Brand; testId: string; showOpen?: boolean }) {
+  const t = isHex(brand.color) ? headerTheme(brand.color) : null;
+  return (
+    <div
+      data-testid={testId}
+      className="flex items-center justify-between gap-3 rounded-2xl border border-coffee-200 px-4 py-3"
+      style={{ background: t?.bg ?? "#fbf7f0", color: t?.fg ?? "#2e1e14" }}
+    >
+      <span className="flex min-w-0 items-center gap-2.5">
+        {brand.logo ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={brand.logo} alt="" className="h-10 w-10 shrink-0 rounded-full object-cover" />
+        ) : (
+          <span aria-hidden className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-sky-100 text-xl">
+            {brand.emoji}
+          </span>
+        )}
+        <span className="min-w-0 leading-tight">
+          <span className="block truncate font-display text-lg font-bold">{brand.name}</span>
+          {brand.tagline && (
+            <span className="block truncate text-xs" style={{ color: t?.muted ?? "#714a2f" }}>
+              {brand.tagline}
+            </span>
+          )}
+        </span>
+      </span>
+      {showOpen && <span className="rounded-full bg-sage-100 px-3 py-1 text-xs font-bold text-sage-700">Open</span>}
+    </div>
+  );
+}
+
+function TextInput({
+  id,
+  label,
+  hint,
+  multiline,
+  ...rest
+}: {
+  id: string;
+  label: string;
+  hint?: string;
+  multiline?: boolean;
+  value: string;
+  placeholder?: string;
+  maxLength?: number;
+  onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
+}) {
+  return (
+    <div>
+      <label className="label" htmlFor={id}>
+        {label}
+      </label>
+      {multiline ? <textarea id={id} className="input min-h-[72px] py-2" rows={2} {...rest} /> : <input id={id} className="input" {...rest} />}
+      {hint && <p className="hint">{hint}</p>}
+    </div>
+  );
+}
+
+function LogoField(p: {
+  label: string;
+  preview: string | null;
+  emoji: string;
+  ariaUpload: string;
+  testId: string;
+  uploading: boolean;
+  hasCustom: boolean;
+  clearLabel: string;
+  onUpload: (f: File | undefined) => void;
+  onClear: () => void;
+  hint: string;
+}) {
+  return (
+    <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+      {p.preview ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={p.preview} alt={`Current ${p.label.toLowerCase()}`} className="h-24 w-24 shrink-0 rounded-full border border-coffee-200 bg-white object-cover" data-testid={p.testId} />
+      ) : (
+        <span aria-hidden className="flex h-24 w-24 shrink-0 items-center justify-center rounded-full bg-sky-100 text-4xl">
+          {p.emoji}
+        </span>
+      )}
+      <div className="flex-1 space-y-2">
+        <p className="font-bold">{p.label}</p>
+        <div className="flex flex-wrap gap-2">
+          <label className="btn-secondary btn-sm cursor-pointer">
+            {p.uploading ? <Spinner /> : p.hasCustom ? `Change ${p.label.toLowerCase()}` : `Upload ${p.label.toLowerCase()}`}
+            <input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" aria-label={p.ariaUpload} onChange={(e) => p.onUpload(e.target.files?.[0])} />
+          </label>
+          {p.hasCustom && (
+            <button type="button" className="btn-ghost btn-sm" onClick={p.onClear}>
+              {p.clearLabel}
+            </button>
+          )}
+        </div>
+        <p className="hint">{p.hint}</p>
+      </div>
+    </div>
+  );
+}
+
+function SiteIconField({ icons, uploading, onUpload, onClear }: { icons: StoreSettings["site_icons"]; uploading: boolean; onUpload: (f: File | undefined) => void; onClear: () => void }) {
+  const tab = icons?.["32"] ?? "/logo.svg";
+  const home = icons?.["180"] ?? "/icons/icon-192.webp";
+  return (
+    <div className="space-y-3 border-t border-coffee-100 pt-5">
+      <p className="font-bold">Website icon</p>
+      <div className="flex flex-wrap items-end gap-6" data-testid="site-icon-preview">
+        <div className="text-center">
+          <div className="flex items-center gap-2 rounded-t-xl border border-b-0 border-coffee-200 bg-white px-3 py-2 text-sm">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={tab} alt="Browser tab icon" className="h-4 w-4" data-testid="site-icon-32" />
+            <span className="max-w-[9rem] truncate">Pahuway Cafe — Order…</span>
+          </div>
+          <p className="hint mt-1">Browser tab</p>
+        </div>
+        <div className="text-center">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={home} alt="Home-screen icon" className="mx-auto h-16 w-16 rounded-2xl border border-coffee-200 object-cover shadow-card" data-testid="site-icon-180" />
+          <p className="hint mt-1">Phone home screen</p>
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        <label className="btn-secondary btn-sm cursor-pointer">
+          {uploading ? <Spinner /> : icons ? "Change website icon" : "Upload website icon"}
+          <input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" aria-label="Upload website icon" onChange={(e) => onUpload(e.target.files?.[0])} />
+        </label>
+        {icons && (
+          <button type="button" className="btn-ghost btn-sm" onClick={onClear}>
+            Use default icon
+          </button>
+        )}
+      </div>
+      <p className="hint">Square image, at least 512 × 512 px (a simple logo on a solid background reads best when tiny). We make the tab and home-screen sizes for you.</p>
+    </div>
   );
 }
 
@@ -409,7 +635,7 @@ function ColorField({ id, label, value, fallback, onChange }: { id: string; labe
           }}
         />
         {isHex(value) && (
-          <button type="button" className="btn-ghost btn-sm" onClick={() => onChange(null)}>
+          <button type="button" className="btn-ghost btn-sm" aria-label={`${label}: use default`} onClick={() => onChange(null)}>
             Default
           </button>
         )}
@@ -423,42 +649,11 @@ function ColorField({ id, label, value, fallback, onChange }: { id: string; labe
   );
 }
 
-function HeaderSettings({ s, set, logo }: { s: StoreSettings; set: SetFn; logo: string }) {
-  const cust = isHex(s.header_color) ? headerTheme(s.header_color) : null;
+function StaffHeaderSettings({ s, set, logo }: { s: StoreSettings; set: SetFn; logo: string }) {
   const staff = headerTheme(isHex(s.staff_header_color) ? s.staff_header_color : DEFAULT_STAFF_HEADER);
-  const storeName = s.store_name?.trim() || "Pahuway Cafe";
   const staffTitle = s.staff_title?.trim() || "Pahuway Staff";
   return (
     <div className="space-y-6 border-t border-coffee-100 pt-5">
-      {/* Customer header */}
-      <div className="space-y-3">
-        <p className="font-bold">Customer header</p>
-        <div
-          data-testid="customer-header-preview"
-          className="flex items-center justify-between gap-3 rounded-2xl border border-coffee-200 px-4 py-3"
-          style={{ background: cust?.bg ?? "#fbf7f0", color: cust?.fg ?? "#2e1e14" }}
-        >
-          <span className="flex min-w-0 items-center gap-2.5">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={logo} alt="" className="h-10 w-10 shrink-0 rounded-full object-cover" />
-            <span className="min-w-0 leading-tight">
-              <span className="block truncate font-display text-lg font-bold">{storeName}</span>
-              <span className="block text-xs" style={{ color: cust?.muted ?? "#714a2f" }}>
-                San Agustin, Romblon
-              </span>
-            </span>
-          </span>
-          <span className="rounded-full bg-sage-100 px-3 py-1 text-xs font-bold text-sage-700">Open</span>
-        </div>
-        <div>
-          <label className="label" htmlFor="store-name">
-            Store name (header title)
-          </label>
-          <input id="store-name" className="input" value={s.store_name ?? ""} maxLength={40} onChange={(e) => set("store_name", e.target.value)} placeholder="Pahuway Cafe" />
-        </div>
-        <ColorField id="header-color" label="Header colour" value={s.header_color} fallback="#fbf7f0" onChange={(v) => set("header_color", v)} />
-      </div>
-
       {/* Staff header */}
       <div className="space-y-3">
         <p className="font-bold">Staff header</p>

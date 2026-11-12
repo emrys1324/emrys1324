@@ -31,6 +31,8 @@ const assert = (c, m) => {
   await admin.waitForURL(BASE + "/admin");
   await admin.goto(BASE + "/admin/settings");
   await admin.getByRole("heading", { name: "Branding" }).waitFor();
+  assert((await admin.getByRole("tab", { name: "Welcome page" }).getAttribute("aria-selected")) === "true", "Branding opens on the Welcome page tab");
+  await admin.getByRole("tab", { name: "Pahuway Cafe" }).click();
 
   // validation: tiny logo refused
   await admin.setInputFiles("input[aria-label='Upload logo']", F("test-logo-small.png"));
@@ -121,30 +123,95 @@ const assert = (c, m) => {
   await cust.waitForFunction(() => document.querySelector("[data-testid=store-title]")?.textContent?.trim() === "Isla Café Live", null, { timeout: 8000 });
   assert(true, "store name changes live on an open customer page");
 
-  // ---- Baybayin logo on the home page's scooter card
+  // ---- Baybayin: own header (name, colour, logo) on its Coming soon page + home card
   await cust.goto(BASE + "/");
   await cust.getByTestId("choose-scooter").waitFor();
   assert((await cust.getByTestId("baybayin-logo").count()) === 0, "home: scooter card shows 🛵 until a Baybayin logo is uploaded");
+  await admin.getByRole("tab", { name: "Baybayin" }).click();
   await admin.setInputFiles("input[aria-label='Upload Baybayin logo']", F("test-logo-small.png"));
   await admin.getByText("Logo is too small").waitFor();
   await admin.setInputFiles("input[aria-label='Upload Baybayin logo']", F("test-logo.png"));
   await admin.getByText("Baybayin logo uploaded — press Save settings").waitFor();
   const bayUrl = await admin.getByTestId("baybayin-logo-preview").getAttribute("src");
   assert(bayUrl.includes("/storage/v1/object/public/menu-photos/branding/"), "Baybayin logo uploads to storage with a preview");
+  await admin.locator("#baybayin-name").fill("Baybayin Rides");
+  await admin.locator("#baybayin-tagline").fill("Scooters by the beach");
+  await admin.getByRole("group", { name: "Baybayin header colour" }).getByRole("button", { name: "Use colour #1e3a5f" }).click();
+  assert((await admin.getByTestId("baybayin-header-preview").textContent()).includes("Baybayin Rides"), "Baybayin header preview follows the edits");
   await admin.getByRole("button", { name: "Save settings" }).click();
   await admin.getByText("Settings saved.").waitFor();
   await cust.waitForFunction((u) => document.querySelector("[data-testid=baybayin-logo]")?.getAttribute("src") === u, bayUrl, { timeout: 8000 });
   assert(true, "home page scooter card shows the Baybayin logo (live, no reload)");
-  await cust.reload();
-  await cust.getByTestId("baybayin-logo").waitFor();
-  assert((await cust.getByTestId("choose-scooter").getAttribute("aria-disabled")) === "true", "…after reload too, and the card stays Coming soon");
+  await cust.getByText("Rent a scooter from Baybayin Rides").waitFor();
+  await cust.getByTestId("choose-scooter").click();
+  await cust.waitForURL(BASE + "/baybayin");
+  await cust.getByText("Coming soon").first().waitFor();
+  const bHeaderBg = await cust.getByTestId("customer-header").evaluate((el) => getComputedStyle(el).backgroundColor);
+  assert((await cust.getByTestId("store-title").textContent()).trim() === "Baybayin Rides" && bHeaderBg === "rgb(30, 58, 95)", "Baybayin card opens its Coming soon page with Baybayin's own header (name + colour)");
+  assert((await cust.getByTestId("brand-logo").getAttribute("src")) === bayUrl && (await cust.getByTestId("customer-header").getByText(/^(Open|Closed)/).count()) === 0, "…its own logo, and no café open/closed badge");
+  await cust.getByRole("link", { name: /Order from .* meanwhile/ }).waitFor();
+
+  // ---- Welcome page: its own header, welcome text, card texts, website icon
+  await admin.getByRole("tab", { name: "Welcome page" }).click();
+  await admin.locator("#site-name").fill("San Agustin Hub");
+  await admin.locator("#site-tagline").fill("Coffee & scooters");
+  await admin.getByRole("group", { name: "Welcome page header colour" }).getByRole("button", { name: "Use colour #556c4d" }).click();
+  await admin.locator("#welcome-title-input").fill("Mabuhay!");
+  await admin.locator("#welcome-subtitle-input").fill("Kape or scooter today?");
+  await admin.locator("#cafe-card-text").fill("Best coffee in town");
+  await admin.locator("#baybayin-card-text").fill("Island rides, launching soon");
+  await admin.setInputFiles("input[aria-label='Upload website icon']", F("test-logo-small.png"));
+  await admin.getByText("Icon is too small").waitFor();
+  await admin.setInputFiles("input[aria-label='Upload website icon']", F("test-logo.png"));
+  await admin.getByText("Website icon ready").waitFor();
+  const icon32 = await admin.getByTestId("site-icon-32").getAttribute("src");
+  const icon180 = await admin.getByTestId("site-icon-180").getAttribute("src");
+  assert(/icon-.*-32\.png$/.test(icon32) && /icon-.*-180\.png$/.test(icon180), "website icon is resized into tab (32) and home-screen (180) sizes");
+  const sizes = await admin.evaluate(async (urls) => Promise.all(urls.map(async (u) => { const b = await createImageBitmap(await (await fetch(u)).blob()); return `${b.width}x${b.height}`; })), [icon32, icon180]);
+  assert(sizes.join(",") === "32x32,180x180", `icon files have the exact sizes (${sizes.join(", ")})`);
+  await admin.getByRole("button", { name: "Save settings" }).click();
+  await admin.getByText("Settings saved.").waitFor();
+  await cust.goto(BASE + "/");
+  await cust.getByTestId("welcome-title").getByText("Mabuhay!").waitFor();
+  const homeBg = await cust.getByTestId("customer-header").evaluate((el) => getComputedStyle(el).backgroundColor);
+  assert((await cust.getByTestId("store-title").textContent()).trim() === "San Agustin Hub" && homeBg === "rgb(85, 108, 77)", "home page has its own header title and colour");
+  assert((await cust.getByTestId("welcome-subtitle").textContent()) === "Kape or scooter today?" && (await cust.getByText("Best coffee in town").count()) === 1 && (await cust.getByText("Island rides, launching soon").count()) === 1, "welcome text and both card descriptions are editable");
+  assert((await cust.getByTestId("customer-header").getByText(/^(Open|Closed)/).count()) === 0, "home header has no café open badge (it's on the café card)");
+  await cust.goto(BASE + "/menu");
+  await cust.getByRole("heading", { name: "Coffee", exact: true }).waitFor();
+  assert((await cust.getByTestId("store-title").textContent()).trim() === "Isla Café Live", "café pages keep the café's own header (separate branding)");
+  // the server caches the icon for up to a minute before the page <head> and manifest pick it up
+  let headOk = false;
+  for (let i = 0; i < 40 && !headOk; i++) {
+    const html = await (await fetch(BASE + "/")).text();
+    headOk = html.includes(icon32) && html.includes(icon180);
+    if (!headOk) await new Promise((r) => setTimeout(r, 2500));
+  }
+  assert(headOk, "page <head> uses the uploaded icon (browser tab + Apple home screen)");
+  let manifestOk = false;
+  for (let i = 0; i < 40 && !manifestOk; i++) {
+    const m = await (await fetch(BASE + "/manifest.webmanifest")).json();
+    manifestOk = m.icons.some((x) => x.sizes === "192x192" && /icon-.*-192\.png$/.test(x.src)) && m.icons.some((x) => x.sizes === "512x512" && /icon-.*-512\.png$/.test(x.src));
+    if (!manifestOk) await new Promise((r) => setTimeout(r, 2500));
+  }
+  assert(manifestOk, "web-app manifest lists the uploaded icon (192 + 512)");
+
+  // reset the welcome page + Baybayin branding
+  for (const id of ["#site-name", "#site-tagline", "#welcome-title-input", "#welcome-subtitle-input", "#cafe-card-text", "#baybayin-card-text"]) await admin.locator(id).fill("");
+  await admin.getByRole("button", { name: "Welcome page header colour: use default" }).click();
+  await admin.getByRole("button", { name: "Use default icon" }).click();
+  await admin.getByRole("tab", { name: "Baybayin" }).click();
+  await admin.locator("#baybayin-name").fill("");
+  await admin.locator("#baybayin-tagline").fill("");
+  await admin.getByRole("button", { name: "Baybayin header colour: use default" }).click();
   await admin.getByRole("button", { name: "Remove", exact: true }).click();
+  await admin.getByRole("tab", { name: "Pahuway Cafe" }).click();
 
   // revert to defaults
   await admin.locator("#store-name").fill("Pahuway Cafe");
   await admin.locator("#staff-title").fill("Pahuway Staff");
-  await admin.getByRole("button", { name: "Default", exact: true }).first().click();
-  await admin.getByRole("button", { name: "Default", exact: true }).first().click();
+  await admin.getByRole("button", { name: "Header colour: use default", exact: true }).click();
+  await admin.getByRole("button", { name: "Staff header colour: use default" }).click();
   await admin.getByRole("button", { name: "Use default logo" }).click();
   await admin.getByRole("button", { name: "Remove background" }).click();
   await admin.getByRole("button", { name: "Save settings" }).click();
@@ -154,6 +221,9 @@ const assert = (c, m) => {
   assert((await cust.locator("header img").first().getAttribute("src")) === "/logo.svg" && (await cust.getByTestId("brand-background").count()) === 0, "defaults restored");
   assert((await cust.getByTestId("store-title").textContent()).trim() === "Pahuway Cafe", "store name restored");
   assert(sqlBay() === "", "Baybayin logo removed (scooter card back to 🛵)");
+  await cust.goto(BASE + "/");
+  await cust.getByTestId("welcome-title").getByText("Welcome!").waitFor();
+  assert((await cust.getByTestId("store-title").textContent()).trim() === "Pahuway Cafe" && (await cust.getByText("Rent a scooter from Baybayin").count()) === 1, "welcome page + Baybayin back to defaults (empty fields = defaults)");
   const restoredBg = await cust.getByTestId("customer-header").evaluate((el) => getComputedStyle(el).backgroundColor);
   assert(restoredBg.startsWith("rgba(251, 247, 240"), "customer header back to default cream");
 
