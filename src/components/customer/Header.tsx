@@ -2,17 +2,23 @@
 import Link from "next/link";
 import { formatClock } from "@/lib/hours";
 import type { StoreSettings } from "@/lib/types";
-import { useLogo, useStoreSettings } from "@/lib/store-settings";
+import { useStoreSettings } from "@/lib/store-settings";
+import { brandOf, type BrandKey } from "@/lib/brands";
 import { headerTheme, headerVars, isHex } from "@/lib/color";
 
-export function Logo({ small = false }: { small?: boolean }) {
-  const logo = useLogo();
+export function Logo({ small = false, brand = "cafe" }: { small?: boolean; brand?: BrandKey }) {
   const { settings } = useStoreSettings();
-  const name = settings?.store_name?.trim() || "Pahuway Cafe";
+  const b = brandOf(settings, brand);
   return (
-    <Link href="/" className="flex min-w-0 items-center gap-2.5" aria-label={`${name} home`}>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={logo} alt="" className={`${small ? "h-9 w-9" : "h-11 w-11"} shrink-0 rounded-full object-cover`} />
+    <Link href={brand === "baybayin" ? "/baybayin" : "/"} className="flex min-w-0 items-center gap-2.5" aria-label={`${b.name} home`}>
+      {b.logo ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={b.logo} alt="" className={`${small ? "h-9 w-9" : "h-11 w-11"} shrink-0 rounded-full object-cover`} data-testid="brand-logo" />
+      ) : (
+        <span aria-hidden className={`${small ? "h-9 w-9 text-lg" : "h-11 w-11 text-2xl"} flex shrink-0 items-center justify-center rounded-full bg-sky-100`}>
+          {b.emoji}
+        </span>
+      )}
       <span className="min-w-0 leading-tight">
         {/* Long names wrap onto up to two lines on phones instead of being cut off */}
         <span
@@ -21,24 +27,29 @@ export function Logo({ small = false }: { small?: boolean }) {
             small ? "text-base sm:text-lg" : "text-base min-[400px]:text-lg sm:text-xl"
           }`}
         >
-          {name}
+          {b.name}
         </span>
-        {!small && <span className="hidden whitespace-nowrap text-xs font-medium text-[color:var(--hmuted,#714a2f)] sm:block">San Agustin, Romblon</span>}
+        {!small && b.tagline && (
+          <span data-testid="brand-tagline" className="hidden whitespace-nowrap text-xs font-medium text-[color:var(--hmuted,#714a2f)] sm:block">
+            {b.tagline}
+          </span>
+        )}
       </span>
     </Link>
   );
 }
 
 /** Props for a customer-facing header: admin colour (with readable text) or the default cream. */
-export function useCustomerHeaderStyle(): { className: string; style?: React.CSSProperties } {
+export function useCustomerHeaderStyle(brand: BrandKey = "cafe"): { className: string; style?: React.CSSProperties } {
   const { settings } = useStoreSettings();
-  if (!isHex(settings?.header_color)) return { className: "border-coffee-100 bg-cream/95 backdrop-blur" };
-  const t = headerTheme(settings.header_color);
+  const color = brandOf(settings, brand).color;
+  if (!isHex(color)) return { className: "border-coffee-100 bg-cream/95 backdrop-blur" };
+  const t = headerTheme(color);
   return { className: "border-black/10 bg-[color:var(--hbg)]", style: headerVars(t, "h") };
 }
 
-export function StoreHeader({ settings, open, back }: { settings: StoreSettings | null; open: boolean; back?: string }) {
-  const hs = useCustomerHeaderStyle();
+export function StoreHeader({ settings, open, back, brand = "cafe" }: { settings: StoreSettings | null; open: boolean; back?: string; brand?: BrandKey }) {
+  const hs = useCustomerHeaderStyle(brand);
   return (
     <header data-testid="customer-header" className={`sticky top-0 z-30 border-b pt-[env(safe-area-inset-top)] ${hs.className}`} style={hs.style}>
       <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-3">
@@ -48,10 +59,10 @@ export function StoreHeader({ settings, open, back }: { settings: StoreSettings 
               ←
             </Link>
           )}
-          <Logo small={!!back} />
+          <Logo small={!!back} brand={brand} />
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          {settings && (
+          {settings && brand === "cafe" && (
             <span
               className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-bold ${open ? "bg-sage-100 text-sage-700" : "bg-stone-200 text-stone-800"}`}
             >

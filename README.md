@@ -16,7 +16,7 @@ More screenshots are in [`docs/screenshots/`](docs/screenshots).
 
 ## What's inside
 
-**Home** (`/`): customers choose **Order from Pahuway Cafe** (shows whether the café is open and any items already in the cart) or **Rent a scooter from Baybayin** (marked *Coming soon*, not clickable yet).
+**Home** (`/`): customers choose **Order from Pahuway Cafe** (shows whether the café is open and any items already in the cart) or **Rent a scooter from Baybayin** (opens a *Coming soon* page at `/baybayin`). The home page, the café pages and Baybayin each have their **own header branding** (title, tagline, logo, colour), and the welcome text, card descriptions and the **website icon** (browser tab / home screen) are editable in Admin → Settings → Branding.
 
 **Customers** go from menu (`/menu`) to order placed in 3 screens:
 1. **Menu**: categories, photos, prices and "Sold out" badges. Tap an item to choose options (hot/iced, sugar level, milk, add-ons, pizza size) with live price updates. The cart opens as a drawer on the same screen.

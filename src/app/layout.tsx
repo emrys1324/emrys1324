@@ -4,14 +4,30 @@ import { CartProvider } from "@/lib/cart";
 import { NativeBridge } from "@/components/NativeBridge";
 import { BrandBackground } from "@/components/BrandBackground";
 import { StoreSettingsProvider } from "@/lib/store-settings";
+import { getSiteIcons } from "@/lib/site-icons";
 
-export const metadata: Metadata = {
+const BASE_METADATA: Metadata = {
   title: "Pahuway Cafe — Order online",
   description: "Specialty coffee in San Agustin, Romblon. Order for pickup, dine-in or delivery.",
-  icons: { icon: "/logo.svg", apple: "/icons/icon-192.webp" },
-  manifest: "/manifest.webmanifest",
   appleWebApp: { title: "Isla", statusBarStyle: "default" },
 };
+
+/** Browser-tab and home-screen icons: the one uploaded in Settings → Branding, else the bundled ones. */
+export async function generateMetadata(): Promise<Metadata> {
+  const icons = await getSiteIcons();
+  return {
+    ...BASE_METADATA,
+    icons: icons
+      ? {
+          icon: [
+            { url: icons["32"] ?? icons["192"]!, sizes: "32x32", type: "image/png" },
+            { url: icons["192"]!, sizes: "192x192", type: "image/png" },
+          ],
+          apple: icons["180"] ?? icons["192"],
+        }
+      : { icon: "/logo.svg", apple: "/icons/icon-192.webp" },
+  };
+}
 
 export const viewport: Viewport = {
   width: "device-width",

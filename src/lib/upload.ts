@@ -62,3 +62,38 @@ export async function deletePublicImage(url: string | null | undefined): Promise
     await getSupabase().storage.from(BUCKET).remove([path]);
   } catch {}
 }
+
+export const ICON_SIZES = ["32", "180", "192", "512"] as const;
+export type IconSet = Partial<Record<(typeof ICON_SIZES)[number], string>>;
+
+/**
+ * Website icon: one square-ish image → 32 (browser tab), 180 (iPhone home screen),
+ * 192 and 512 (Android / installed app) PNGs, centre-cropped to a square. Returns their public URLs.
+ */
+export async function uploadSiteIcons(file: File): Promise<IconSet> {
+  if (!file.type.startsWith("image/")) throw new Error("Please choose an image file (PNG, JPG or WebP).");
+  const bmp = await createImageBitmap(file).catch(() => null);
+  if (!bmp) throw new Error("That file doesn't look like an image. Please use PNG, JPG or WebP.");
+  if (Math.min(bmp.width, bmp.height) < 192) throw new Error("Icon is too small — please use a square image of at least 512 × 512 pixels.");
+  const side = Math.min(bmp.width, bmp.height);
+  const sx = (bmp.width - side) / 2;
+  const sy = (bmp.height - side) / 2;
+  const supabase = getSupabase();
+  const id = crypto.randomUUID();
+  const out: IconSet = {};
+  for (const size of ICON_SIZES) {
+    const n = Number(size);
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = n;
+    const ctx = canvas.getContext("2d")!;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(bmp, sx, sy, side, side, 0, 0, n, n);
+    const blob = await new Promise<Blob | null>((r) => canvas.toBlob(r, "image/png"));
+    if (!blob) throw new Error("Couldn't prepare the icon. Please try a different image.");
+    const path = `branding/icon-${id}-${size}.png`;
+    const { error } = await supabase.storage.from(BUCKET).upload(path, blob, { contentType: "image/png", upsert: false });
+    if (error) throw new Error(error.message);
+    out[size] = supabase.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+  }
+  return out;
+}

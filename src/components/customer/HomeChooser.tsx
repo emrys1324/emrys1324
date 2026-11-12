@@ -4,14 +4,16 @@ import { StoreHeader } from "./Header";
 import { Badge } from "@/components/ui";
 import { useCart } from "@/lib/cart";
 import { formatClock } from "@/lib/hours";
-import { useLogo, useStoreSettings } from "@/lib/store-settings";
+import { useStoreSettings } from "@/lib/store-settings";
+import { brandOf, welcomeTexts } from "@/lib/brands";
 
 /** Home: choose between ordering from the café and (soon) renting a scooter. */
 export function HomeChooser() {
   const { settings, open } = useStoreSettings();
   const { count } = useCart();
-  const logo = useLogo();
-  const cafeName = settings?.store_name?.trim() || "Pahuway Cafe";
+  const cafe = brandOf(settings, "cafe");
+  const bay = brandOf(settings, "baybayin");
+  const t = welcomeTexts(settings);
 
   const cafeStatus = !settings
     ? null
@@ -23,10 +25,16 @@ export function HomeChooser() {
 
   return (
     <div className="min-h-screen">
-      <StoreHeader settings={settings} open={open} />
+      <StoreHeader settings={settings} open={open} brand="site" />
       <main className="mx-auto max-w-2xl px-4 py-6 sm:py-10">
-        <h1 className="font-display text-3xl font-bold leading-tight sm:text-4xl">Welcome!</h1>
-        <p className="mt-1 text-lg text-coffee-700">What would you like to do today?</p>
+        <h1 data-testid="welcome-title" className="font-display text-3xl font-bold leading-tight sm:text-4xl">
+          {t.title}
+        </h1>
+        {t.subtitle && (
+          <p data-testid="welcome-subtitle" className="mt-1 text-lg text-coffee-700">
+            {t.subtitle}
+          </p>
+        )}
 
         <ul className="mt-6 grid gap-4" aria-label="Choose a service">
           <li>
@@ -36,10 +44,10 @@ export function HomeChooser() {
               className="card group flex items-center gap-4 p-4 transition hover:shadow-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-coffee-700 sm:p-5"
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={logo} alt="" className="h-20 w-20 shrink-0 rounded-2xl bg-cream object-cover sm:h-24 sm:w-24" />
+              <img src={cafe.logo ?? undefined} alt="" className="h-20 w-20 shrink-0 rounded-2xl bg-cream object-cover sm:h-24 sm:w-24" />
               <span className="min-w-0 flex-1">
-                <span className="block font-display text-xl font-bold leading-snug">Order from {cafeName}</span>
-                <span className="mt-0.5 block text-coffee-700">Coffee, drinks &amp; food · pickup, dine-in or delivery</span>
+                <span className="block font-display text-xl font-bold leading-snug">Order from {cafe.name}</span>
+                {t.cafeCard && <span className="mt-0.5 block text-coffee-700">{t.cafeCard}</span>}
                 {cafeStatus && <span className={`mt-1 block text-sm font-semibold ${cafeStatus.tone}`}>{cafeStatus.text}</span>}
                 {count > 0 && (
                   <span className="mt-1 block text-sm font-semibold text-coffee-800">
@@ -53,29 +61,30 @@ export function HomeChooser() {
             </Link>
           </li>
           <li>
-            <div
-              role="link"
-              aria-disabled="true"
-              aria-label="Rent a scooter from Baybayin — coming soon"
+            <Link
+              href="/baybayin"
               data-testid="choose-scooter"
-              className="card flex cursor-not-allowed items-center gap-4 p-4 opacity-80 sm:p-5"
+              className="card group flex items-center gap-4 p-4 transition hover:shadow-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-coffee-700 sm:p-5"
             >
-              {settings?.baybayin_logo_url ? (
+              {bay.logo ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={settings.baybayin_logo_url} alt="" data-testid="baybayin-logo" className="h-20 w-20 shrink-0 rounded-2xl bg-white object-contain p-1 sm:h-24 sm:w-24" />
+                <img src={bay.logo} alt="" data-testid="baybayin-logo" className="h-20 w-20 shrink-0 rounded-2xl bg-white object-contain p-1 sm:h-24 sm:w-24" />
               ) : (
                 <span aria-hidden className="flex h-20 w-20 shrink-0 items-center justify-center rounded-2xl bg-sky-100 text-4xl sm:h-24 sm:w-24">
-                  🛵
+                  {bay.emoji}
                 </span>
               )}
               <span className="min-w-0 flex-1">
                 <span className="flex flex-wrap items-center gap-2">
-                  <span className="font-display text-xl font-bold leading-snug">Rent a scooter from Baybayin</span>
+                  <span className="font-display text-xl font-bold leading-snug">Rent a scooter from {bay.name}</span>
                   <Badge tone="amber">Coming soon</Badge>
                 </span>
-                <span className="mt-0.5 block text-coffee-700">Scooter rentals for getting around San Agustin. Check back soon!</span>
+                {t.baybayinCard && <span className="mt-0.5 block text-coffee-700">{t.baybayinCard}</span>}
               </span>
-            </div>
+              <span aria-hidden className="text-2xl text-coffee-500 transition group-hover:translate-x-1">
+                →
+              </span>
+            </Link>
           </li>
         </ul>
       </main>
