@@ -19,6 +19,7 @@ export interface StoreSettings {
   contact_phone: string | null;
   contact_email: string | null;
   logo_url: string | null;
+  baybayin_logo_url?: string | null;
   background_url: string | null;
   background_fade: number;
   header_color: string | null;
