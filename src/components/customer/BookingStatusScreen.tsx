@@ -1,9 +1,8 @@
 "use client";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { StoreHeader } from "./Header";
-import { Alert, Badge, PageLoader, Spinner } from "@/components/ui";
+import { Alert, Badge, PageLoader } from "@/components/ui";
 import { getSupabase } from "@/lib/supabase/client";
 import { formatPeso } from "@/lib/format";
 import { useStoreSettings } from "@/lib/store-settings";
@@ -13,10 +12,10 @@ interface PublicBooking {
   booking_number: string;
   status: BookingStatus;
   payment_status: string;
+  payment_method: string | null;
+  gcash_reference: string | null;
   scooter_name: string;
   customer_name: string;
-  start_date: string;
-  end_date: string;
   pickup_at: string;
   return_at: string;
   days: number;
@@ -28,68 +27,30 @@ interface PublicBooking {
   total: number;
   deposit_amount: number;
   security_deposit: number;
-  checkout_url: string | null;
-  payment_expires_at: string | null;
   cancel_reason: string | null;
 }
 
-/** A customer's booking, by its secret link. Confirms the deposit with HitPay when they return from paying. */
+/** A customer's booking, by its secret link. Shows whether staff have checked the GCash deposit yet. */
 export function BookingStatusScreen({ token }: { token: string }) {
   const { settings, open } = useStoreSettings();
   const rs = useRentalSettings();
-  const params = useSearchParams();
   const [b, setB] = useState<PublicBooking | null | undefined>(undefined);
-  const [checking, setChecking] = useState(false);
-  const [paying, setPaying] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [now, setNow] = useState(Date.now());
 
   const load = useCallback(async () => {
     const { data } = await getSupabase().rpc("get_booking_by_token", { p_token: token });
     setB((data as PublicBooking) ?? null);
-    return data as PublicBooking | null;
   }, [token]);
 
   useEffect(() => {
-    let stop = false;
-    (async () => {
-      const first = await load();
-      // back from HitPay: confirm with HitPay (webhook may be a few seconds behind)
-      if (params.get("paid") && first?.payment_status === "awaiting_payment") {
-        setChecking(true);
-        // HitPay adds status=completed when the payment went through; otherwise (customer backed out) check briefly
-        const tries = params.get("status") === "completed" ? 10 : 2;
-        for (let i = 0; i < tries && !stop; i++) {
-          const r = await fetch("/api/rentals/verify", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token }) }).then((x) => x.json()).catch(() => ({}));
-          const next = await load();
-          if (r.outcome === "paid" || r.outcome === "already_paid" || next?.payment_status !== "awaiting_payment") break;
-          if (i < tries - 1) await new Promise((res) => setTimeout(res, 3000));
-        }
-        setChecking(false);
-      }
-    })();
-    const t = setInterval(() => setNow(Date.now()), 1000);
-    const poll = setInterval(load, 20000);
-    return () => {
-      stop = true;
-      clearInterval(t);
-      clearInterval(poll);
-    };
-  }, [load, params, token]);
-
-  const payNow = async () => {
-    setPaying(true);
-    setError(null);
-    const res = await fetch("/api/rentals/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token }) });
-    const j = await res.json().catch(() => ({}));
-    if (res.ok && j.url) {
-      window.location.href = j.url;
-      return;
-    }
-    setError(j.error ?? "We couldn't open the payment page. Please try again.");
-    setPaying(false);
     load();
-  };
+    const poll = setInterval(load, 15000);
+    const onFocus = () => load();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      clearInterval(poll);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [load]);
 
   if (b === undefined) return <PageLoader />;
   const header = <StoreHeader settings={settings} open={open} brand="baybayin" back="/baybayin" />;
@@ -107,11 +68,9 @@ export function BookingStatusScreen({ token }: { token: string }) {
       </div>
     );
 
-  const left = b.payment_expires_at ? Math.max(0, new Date(b.payment_expires_at).getTime() - now) : 0;
-  const mm = Math.floor(left / 60000);
-  const ss = Math.floor((left % 60000) / 1000);
   const paid = ["deposit_paid", "paid"].includes(b.payment_status);
-  const balance = Number(b.total) - (paid ? Number(b.deposit_amount) : 0);
+  const checking = b.payment_status === "for_verification" && b.status === "awaiting_deposit";
+  const label = checking ? "Checking your GCash payment" : BOOKING_STATUS_LABEL[b.status];
 
   return (
     <div className="min-h-screen">
@@ -123,37 +82,27 @@ export function BookingStatusScreen({ token }: { token: string }) {
             {b.booking_number}
           </p>
           <p className="mt-2">
-            <Badge tone={b.status === "cancelled" ? "red" : b.status === "awaiting_deposit" ? "amber" : "green"}>{BOOKING_STATUS_LABEL[b.status]}</Badge>
+            <Badge tone={b.status === "cancelled" ? "red" : b.status === "awaiting_deposit" ? "amber" : "green"}>{label}</Badge>
           </p>
-          {checking && (
-            <p className="mt-3 flex items-center justify-center gap-2 text-coffee-700">
-              <Spinner /> Confirming your payment…
-            </p>
-          )}
           {b.status === "confirmed" && <p className="mt-3 text-lg font-semibold text-sage-700">You&apos;re booked! Deposit received ✓</p>}
           {b.status === "picked_up" && <p className="mt-3 text-lg">Enjoy the ride! 🛵</p>}
           {b.status === "returned" && <p className="mt-3 text-lg">Thanks for riding with us!</p>}
         </section>
 
-        {b.status === "awaiting_deposit" && !checking && (
-          <section className="card space-y-3 p-5">
-            <Alert tone="amber">
-              <p className="text-base font-bold">Complete your deposit</p>
-              <p className="font-normal">
-                Pay {formatPeso(b.deposit_amount)} within {mm}:{String(ss).padStart(2, "0")} to keep this booking. After that, the scooter is released for others.
-              </p>
-            </Alert>
-            <button className="btn-primary w-full" onClick={payNow} disabled={paying || left === 0}>
-              {paying ? <Spinner /> : `Pay ${formatPeso(b.deposit_amount)} now`}
-            </button>
-            {error && <Alert>{error}</Alert>}
-          </section>
+        {checking && (
+          <Alert tone="amber">
+            <p className="text-base font-bold">We&apos;re checking your GCash payment</p>
+            <p className="font-normal">
+              Your scooter is held for you while our staff confirm your {formatPeso(b.deposit_amount)} deposit
+              {b.gcash_reference ? ` (ref. ${b.gcash_reference})` : ""}. This page updates by itself once it&apos;s confirmed.
+            </p>
+          </Alert>
         )}
         {b.status === "cancelled" && (
           <Alert>
             <p className="font-bold">This booking is cancelled.</p>
             {b.cancel_reason && <p className="font-normal">{b.cancel_reason}</p>}
-            {b.payment_status === "refunded" && <p className="font-normal">Your deposit has been refunded.</p>}
+            {b.payment_status === "refunded" && <p className="font-normal">Your deposit has been sent back to you.</p>}
           </Alert>
         )}
 
@@ -186,21 +135,22 @@ export function BookingStatusScreen({ token }: { token: string }) {
               <dd>{formatPeso(b.total)}</dd>
             </div>
             <div className="flex justify-between">
-              <dt>Deposit {paid ? "paid online" : "(due now)"}</dt>
+              <dt>Deposit {paid ? "paid" : b.payment_method === "gcash" ? "sent by GCash (being checked)" : "(not paid)"}</dt>
               <dd>{formatPeso(b.deposit_amount)}</dd>
             </div>
             {b.status !== "cancelled" && (
               <div className="flex justify-between font-semibold">
-                <dt>{paid ? "Balance at pickup" : "Balance after deposit"}</dt>
-                <dd data-testid="balance">{formatPeso(paid ? balance : Number(b.total) - Number(b.deposit_amount))}</dd>
+                <dt>Balance at pickup</dt>
+                <dd data-testid="balance">{formatPeso(Number(b.total) - Number(b.deposit_amount))}</dd>
               </div>
             )}
           </dl>
           {Number(b.security_deposit) > 0 && b.status !== "cancelled" && b.status !== "returned" && (
             <p className="rounded-xl bg-amber-50 px-3 py-2 text-amber-900">
-              Bring a {formatPeso(b.security_deposit)} security deposit at pickup{rs?.security_deposit_note ? ` (${rs.security_deposit_note})` : ""} — returned when the scooter comes back in good condition. Bring your driver&apos;s license too.
+              Bring a {formatPeso(b.security_deposit)} security deposit at pickup{rs?.security_deposit_note ? ` (${rs.security_deposit_note})` : ""} — returned when the scooter comes back in good condition.
             </p>
           )}
+          {b.status !== "cancelled" && b.status !== "returned" && <p className="text-coffee-700">Bring your driver&apos;s license when you pick up the scooter.</p>}
         </section>
         <p className="text-center text-sm text-coffee-700">Save this page — it&apos;s your booking link.</p>
         <Link href="/" className="btn-secondary w-full">

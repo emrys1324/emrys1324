@@ -6,14 +6,16 @@ import { useCart } from "@/lib/cart";
 import { formatClock } from "@/lib/hours";
 import { useStoreSettings } from "@/lib/store-settings";
 import { brandOf, welcomeTexts } from "@/lib/brands";
+import { bookingsOpen, useRentalSettings } from "@/lib/rentals";
 
-/** Home: choose between ordering from the café and (soon) renting a scooter. */
+/** Home: choose between ordering from the café and renting a scooter. */
 export function HomeChooser() {
   const { settings, open } = useStoreSettings();
   const { count } = useCart();
   const cafe = brandOf(settings, "cafe");
   const bay = brandOf(settings, "baybayin");
   const t = welcomeTexts(settings);
+  const rs = useRentalSettings();
 
   const cafeStatus = !settings
     ? null
@@ -77,7 +79,7 @@ export function HomeChooser() {
               <span className="min-w-0 flex-1">
                 <span className="flex flex-wrap items-center gap-2">
                   <span className="font-display text-xl font-bold leading-snug">Rent a scooter from {bay.name}</span>
-                  <Badge tone="amber">Coming soon</Badge>
+                  {rs && (bookingsOpen(rs) ? <Badge tone="green">Book now</Badge> : <Badge tone="amber">Coming soon</Badge>)}
                 </span>
                 {t.baybayinCard && <span className="mt-0.5 block text-coffee-700">{t.baybayinCard}</span>}
               </span>

@@ -3,15 +3,18 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { Alert, Badge, PageLoader, Spinner } from "@/components/ui";
 import { ScooterPhoto } from "./ScooterPhoto";
+import { AvailabilityCalendar } from "./AvailabilityCalendar";
+import { useStoreSettings } from "@/lib/store-settings";
 import { getSupabase } from "@/lib/supabase/client";
 import { formatPeso, friendlyError, normalizePhone } from "@/lib/format";
 import { resizeImage } from "@/lib/upload";
 import { addDays, getRecentBooking, hoursLabel, manilaDate, manilaInstant, nextPickupSlot, prettyDate, rentalDays24, saveRecentBooking, slotLabel, TIME_SLOTS, type RentalSettings, type Scooter } from "@/lib/rentals";
 
 
-/** Baybayin booking: dates → scooter → details & license → pay the deposit online. */
+/** Baybayin booking (pickup only): calendar & times → scooter → details & license → agree to terms → GCash deposit receipt. */
 export function ScooterBooking({ rs, brandName }: { rs: RentalSettings; brandName: string }) {
   const today = manilaDate();
+  const { settings } = useStoreSettings();
   const first = useMemo(() => nextPickupSlot(), []);
   const [start, setStart] = useState(first.date);
   const [startTime, setStartTime] = useState(first.time);
@@ -24,8 +27,11 @@ export function ScooterBooking({ rs, brandName }: { rs: RentalSettings; brandNam
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [helmets, setHelmets] = useState(1);
-  const [delivery, setDelivery] = useState(false);
-  const [address, setAddress] = useState("");
+  const [agreed, setAgreed] = useState(false);
+  const [gcashRef, setGcashRef] = useState("");
+  const [proof, setProof] = useState<File | null>(null);
+  const [proofPreview, setProofPreview] = useState<string | null>(null);
+  const [calKey, setCalKey] = useState(0);
   const [license, setLicense] = useState<File | null>(null);
   const [licensePreview, setLicensePreview] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
@@ -68,14 +74,20 @@ export function ScooterBooking({ rs, brandName }: { rs: RentalSettings; brandNam
     return () => URL.revokeObjectURL(u);
   }, [license]);
 
+  useEffect(() => {
+    if (!proof) return setProofPreview(null);
+    const u = URL.createObjectURL(proof);
+    setProofPreview(u);
+    return () => URL.revokeObjectURL(u);
+  }, [proof]);
+
   const busyIds = useMemo(() => new Set(validDates ? busyList : []), [busyList, validDates]);
   useEffect(() => {
     if (pick && busyIds.has(pick)) setPick(null);
   }, [busyIds, pick]);
 
   const scooter = scooters?.find((s) => s.id === pick) ?? null;
-  const fee = delivery ? Number(rs.delivery_fee) : 0;
-  const total = scooter ? days * Number(scooter.daily_rate) + fee : 0;
+  const total = scooter ? days * Number(scooter.daily_rate) : 0;
   const deposit = total ? Math.min(total, Math.max(1, Math.round((total * rs.deposit_percent) / 100))) : 0;
 
   const errors: Record<string, string> = {};
@@ -85,8 +97,14 @@ export function ScooterBooking({ rs, brandName }: { rs: RentalSettings; brandNam
   if (name.trim().length < 2) errors.name = "Please enter your name.";
   if (!normalizePhone(phone)) errors.phone = "Use the format 09XXXXXXXXX.";
   if (email.trim() && !/^\S+@\S+\.\S+$/.test(email.trim())) errors.email = "Please check your email.";
-  if (delivery && address.trim().length < 5) errors.address = "Where should we bring the scooter?";
   if (!license) errors.license = "Please add a photo of your driver's license.";
+  else if (license.size > 8 * 1024 * 1024) errors.license = "That photo is too large (max 8 MB).";
+  if (!agreed) errors.terms = "Please read and agree to the terms and conditions.";
+  else {
+    if (gcashRef.replace(/\s/g, "").length < 4) errors.gcashRef = "Enter the reference number from your GCash receipt.";
+    if (!proof) errors.proof = "Please attach a screenshot of your GCash payment.";
+    else if (proof.size > 5 * 1024 * 1024) errors.proof = "Screenshot is too large (max 5 MB).";
+  }
   const show = (k: string) => (tried && errors[k] ? <p className="error-text">{errors[k]}</p> : null);
 
   const submit = async (e: React.FormEvent) => {
@@ -105,6 +123,11 @@ export function ScooterBooking({ rs, brandName }: { rs: RentalSettings; brandNam
       const path = `licenses/${today}/${crypto.randomUUID()}.${ext}`;
       const up = await db.storage.from("license-photos").upload(path, blob, { contentType: blob.type || license!.type, upsert: false });
       if (up.error) throw new Error("We couldn't upload your license photo. Please try again. " + up.error.message);
+      const pblob = await resizeImage(proof!, 1600);
+      const pext = pblob.type === "image/jpeg" ? "jpg" : (proof!.name.split(".").pop() || "jpg").toLowerCase().replace(/[^a-z0-9]/g, "");
+      const proofPath = `proofs/rentals/${today}/${crypto.randomUUID()}.${pext}`;
+      const pup = await db.storage.from("payment-proofs").upload(proofPath, pblob, { contentType: pblob.type || proof!.type, upsert: false });
+      if (pup.error) throw new Error("We couldn't upload your GCash screenshot. Please try again. " + pup.error.message);
       const { data, error } = await db.rpc("book_scooter", {
         p: {
           scooter_id: scooter!.id,
@@ -114,24 +137,23 @@ export function ScooterBooking({ rs, brandName }: { rs: RentalSettings; brandNam
           customer_phone: normalizePhone(phone),
           customer_email: email.trim() || null,
           helmets,
-          delivery,
-          delivery_address: delivery ? address.trim() : null,
           license_path: path,
           notes,
+          terms_agreed: agreed,
+          gcash_reference: gcashRef.replace(/\s/g, ""),
+          payment_proof_path: proofPath,
         },
       });
       if (error) {
-        if (/UNAVAILABLE/.test(error.message)) await loadTaken();
+        if (/UNAVAILABLE/.test(error.message)) {
+          await loadTaken();
+          setCalKey((k) => k + 1);
+        }
         throw new Error(error.message);
       }
       saveRecentBooking(data.token, data.booking_number);
-      const res = await fetch("/api/rentals/checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: data.token }) });
-      const j = await res.json().catch(() => ({}));
-      if (res.ok && j.url) {
-        window.location.href = j.url;
-        return;
-      }
-      window.location.href = `/baybayin/booking/${data.token}`; // the booking page offers "Pay now" again
+      await fetch("/api/rentals/new-booking", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: data.token }), keepalive: true }).catch(() => null);
+      window.location.href = `/baybayin/booking/${data.token}`;
     } catch (err) {
       setError(friendlyError((err as Error).message));
       setBusy(false);
@@ -150,6 +172,18 @@ export function ScooterBooking({ rs, brandName }: { rs: RentalSettings; brandNam
       {/* 1 · Pickup & return */}
       <section className="card space-y-3 p-5" data-error={tried && !!errors.dates}>
         <h2 className="section-title">When?</h2>
+        <p className="hint">All rentals are picked up{rs.pickup_note ? ` ${rs.pickup_note}` : " at our shop"}. Tap a day to set your pickup date.</p>
+        <AvailabilityCalendar
+          scooters={scooters}
+          scooter={scooter}
+          today={today}
+          selected={start}
+          refreshKey={calKey}
+          onPick={(d) => {
+            setStart(d);
+            if (end <= d) setEnd(addDays(d, 1));
+          }}
+        />
         {(
           [
             ["pickup", "Pickup", start, startTime, today, (d: string) => {
@@ -258,22 +292,6 @@ export function ScooterBooking({ rs, brandName }: { rs: RentalSettings; brandNam
             ))}
           </div>
         </fieldset>
-        <div className="space-y-2" data-error={tried && !!errors.address}>
-          <label className="flex items-center gap-3 font-medium">
-            <input type="checkbox" className="h-5 w-5 accent-coffee-700" checked={delivery} onChange={(e) => setDelivery(e.target.checked)} />
-            Deliver the scooter to my place {Number(rs.delivery_fee) > 0 ? `(+${formatPeso(rs.delivery_fee)})` : "(free)"}
-          </label>
-          {delivery && (
-            <>
-              <label className="label" htmlFor="delivery-address">
-                Resort / house and barangay
-              </label>
-              <input id="delivery-address" className="input" value={address} onChange={(e) => setAddress(e.target.value)} maxLength={200} placeholder="e.g. Kamandag Beach Resort, Poblacion" />
-              {show("address")}
-            </>
-          )}
-          {!delivery && rs.pickup_note && <p className="hint">Pickup: {rs.pickup_note}</p>}
-        </div>
         <div data-error={tried && !!errors.license}>
           <span className="label">Driver&apos;s license photo</span>
           <label className="flex cursor-pointer items-center gap-3 rounded-2xl border-2 border-dashed border-coffee-200 p-3">
@@ -312,12 +330,6 @@ export function ScooterBooking({ rs, brandName }: { rs: RentalSettings; brandNam
               </dt>
               <dd className="tabular-nums">{formatPeso(days * Number(scooter.daily_rate))}</dd>
             </div>
-            {delivery && (
-              <div className="flex justify-between gap-3">
-                <dt>Delivery</dt>
-                <dd className="tabular-nums">{formatPeso(fee)}</dd>
-              </div>
-            )}
             <div className="flex justify-between gap-3 border-t border-coffee-100 pt-2 text-base font-bold">
               <dt>Total rental</dt>
               <dd className="tabular-nums">{formatPeso(total)}</dd>
@@ -337,15 +349,74 @@ export function ScooterBooking({ rs, brandName }: { rs: RentalSettings; brandNam
               {rs.security_deposit_note ? ` ${rs.security_deposit_note}` : ""} — returned when the scooter comes back in good condition.
             </p>
           )}
-          <p className="hint">The deposit secures your booking. Pay with QR Ph (GCash, Maya or your bank app) or online banking. Unpaid bookings are released after 30 minutes.</p>
+          <p className="hint">Pickup only{rs.pickup_note ? `: ${rs.pickup_note}` : ""}. Pay the balance when you pick up the scooter.</p>
         </section>
       )}
+
+      {/* 5 · Terms, then GCash deposit */}
+      <section className="card space-y-4 p-5">
+        <h2 className="section-title">Terms and conditions</h2>
+        <div className="max-h-64 overflow-y-auto whitespace-pre-wrap rounded-2xl bg-cream-100 p-4 text-sm leading-relaxed text-coffee-800" data-testid="rental-terms" tabIndex={0} aria-label="Rental terms and conditions">
+          {rs.terms}
+        </div>
+        <label className="flex items-start gap-3 font-medium" data-error={tried && !!errors.terms}>
+          <input type="checkbox" className="mt-0.5 h-5 w-5 shrink-0 accent-coffee-700" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />
+          I have read and agree to the terms and conditions
+        </label>
+        {show("terms")}
+        {agreed && (
+          <div className="space-y-4 rounded-2xl bg-cream-100 p-4" data-testid="gcash-payment">
+            <h3 className="font-semibold">Pay the deposit with GCash</h3>
+            <div className="flex flex-col items-center gap-3 text-center sm:flex-row sm:text-left">
+              {settings?.gcash_qr_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={settings.gcash_qr_url} alt="GCash QR code" className="h-44 w-44 rounded-2xl bg-white p-2" />
+              ) : (
+                <div className="flex h-44 w-44 items-center justify-center rounded-2xl bg-white p-4 text-sm text-coffee-600">QR not set up yet — use the number</div>
+              )}
+              <div>
+                <p className="text-sm text-coffee-700">Send exactly</p>
+                <p className="text-3xl font-bold tabular-nums" data-testid="gcash-amount">
+                  {deposit ? formatPeso(deposit) : "—"}
+                </p>
+                {!deposit && <p className="text-sm text-coffee-600">Choose your dates and a scooter first.</p>}
+                {settings?.gcash_name && <p className="mt-1 font-semibold">{settings.gcash_name}</p>}
+                {settings?.gcash_number && <p className="font-mono text-lg">{settings.gcash_number}</p>}
+                <p className="mt-1 text-sm text-coffee-600">Our staff will check your payment and confirm your booking.</p>
+              </div>
+            </div>
+            <div data-error={tried && !!errors.gcashRef}>
+              <label className="label" htmlFor="gcash-ref">
+                GCash reference no.
+              </label>
+              <input id="gcash-ref" className="input font-mono" inputMode="numeric" value={gcashRef} onChange={(e) => setGcashRef(e.target.value)} maxLength={40} placeholder="e.g. 1012 345 678901" />
+              {show("gcashRef")}
+            </div>
+            <div data-error={tried && !!errors.proof}>
+              <span className="label">Payment screenshot</span>
+              <label className="flex min-h-[64px] cursor-pointer items-center gap-3 rounded-2xl border-2 border-dashed border-coffee-300 bg-white px-4 py-3">
+                {proofPreview ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={proofPreview} alt="Payment screenshot preview" className="h-16 w-12 rounded-lg object-cover" />
+                ) : (
+                  <span className="text-2xl" aria-hidden>
+                    📎
+                  </span>
+                )}
+                <span className="font-semibold text-coffee-800">{proof ? "Change screenshot" : "Attach screenshot"}</span>
+                <input type="file" accept="image/*" className="sr-only" aria-label="GCash payment screenshot" onChange={(e) => setProof(e.target.files?.[0] ?? null)} />
+              </label>
+              {show("proof")}
+            </div>
+          </div>
+        )}
+      </section>
 
       {error && <Alert>{error}</Alert>}
       <div className="fixed inset-x-0 bottom-0 z-20 border-t border-coffee-100 bg-cream/95 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur">
         <div className="mx-auto max-w-lg">
           <button className="btn-primary w-full" disabled={busy}>
-            {busy ? <Spinner /> : deposit ? `Pay ${formatPeso(deposit)} deposit` : `Book a scooter from ${brandName}`}
+            {busy ? <Spinner /> : agreed && deposit ? `Book & send ${formatPeso(deposit)} deposit` : `Book a scooter from ${brandName}`}
           </button>
         </div>
       </div>

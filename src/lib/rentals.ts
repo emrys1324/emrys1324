@@ -13,6 +13,8 @@ export interface RentalSettings {
   max_days: number;
   grace_minutes: number;
   turnaround_minutes: number;
+  terms: string | null;
+  terms_updated_at: string | null;
   sms_enabled: boolean;
   staff_alert_phones: string | null;
   reminder_hours: number;
@@ -28,7 +30,7 @@ export interface Scooter {
 }
 export type BookingStatus = "awaiting_deposit" | "confirmed" | "picked_up" | "returned" | "cancelled";
 export const BOOKING_STATUS_LABEL: Record<BookingStatus, string> = {
-  awaiting_deposit: "Waiting for deposit",
+  awaiting_deposit: "Checking deposit",
   confirmed: "Confirmed",
   picked_up: "On the road",
   returned: "Returned",
@@ -36,6 +38,7 @@ export const BOOKING_STATUS_LABEL: Record<BookingStatus, string> = {
 };
 export const PAYMENT_LABEL: Record<string, string> = {
   awaiting_payment: "Deposit not paid",
+  for_verification: "GCash to check",
   deposit_paid: "Deposit paid",
   paid: "Paid in full",
   refunded: "Deposit refunded",
@@ -123,3 +126,23 @@ export const hoursLabel = (ms: number) => {
   const h = ms / 3_600_000;
   return Number.isInteger(h) ? `${h} h` : `${h.toFixed(1)} h`;
 };
+
+/** Bookings are open only with the switch on AND terms written. */
+export const bookingsOpen = (rs: RentalSettings | null) => !!rs?.bookings_enabled && !!rs.terms?.trim();
+
+// ---- calendar helpers
+export type Taken = { scooter_id: string; pickup_at: string; blocked_until: string };
+/** Days of a month grid (Mon-first), padded with nulls. */
+export function monthGrid(year: number, month0: number): (string | null)[] {
+  const first = new Date(Date.UTC(year, month0, 1));
+  const lead = (first.getUTCDay() + 6) % 7;
+  const days = new Date(Date.UTC(year, month0 + 1, 0)).getUTCDate();
+  const out: (string | null)[] = Array(lead).fill(null);
+  for (let d = 1; d <= days; d++) out.push(`${year}-${String(month0 + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`);
+  while (out.length % 7) out.push(null);
+  return out;
+}
+/** Does a taken range touch this Manila day? */
+export const touchesDay = (t: { pickup_at: string; blocked_until: string }, ymd: string) =>
+  new Date(t.pickup_at).getTime() < manilaInstant(addDays(ymd, 1), "00:00") && new Date(t.blocked_until).getTime() > manilaInstant(ymd, "00:00");
+export const monthLabel = (year: number, month0: number) => new Date(Date.UTC(year, month0, 15)).toLocaleDateString("en-PH", { month: "long", year: "numeric", timeZone: "UTC" });

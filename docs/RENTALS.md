@@ -1,22 +1,32 @@
 # Baybayin scooter rentals
 
-Customers book a scooter with a **pickup and return date and time** on the Baybayin page (`/baybayin`), charged **per 24 hours**, upload a photo of their driver's license, choose helmets and (optionally) delivery to their resort or house, and pay an **online deposit** through HitPay. The rest is paid at pickup.
+Customers pick days on an **availability calendar**, choose a **pickup and return date and time** on the Baybayin page (`/baybayin`), charged **per 24 hours**, upload a photo of their driver's license, choose helmets, **agree to your terms and conditions**, then send a **deposit by GCash** to the café's GCash account and upload the receipt — the same way as café GCash orders. Staff check the receipt and confirm the booking. **All bookings are pickup** (no delivery). The rest is paid at pickup.
+
+![Availability calendar](screenshots/40-rental-calendar.png) ![Terms, then GCash form](screenshots/42-rental-gcash-form.png)
 
 ## How it works
-1. **Customer** picks the pickup and return **date and time** (any time of day, 30-minute steps; at least 1 hour). Days are counted in **24-hour blocks**: 9 AM → 9 AM next day = 1 day; a same-day rental = 1 day; returning later than the **grace period** (default 60 min) adds a day. Price = days × the scooter's daily rate, plus the delivery fee if they want delivery. Scooters already booked during those times show as **Booked**.
-2. They fill in name, mobile, optional email, helmets (0–2), delivery address (if delivery), the **license photo** and notes, then tap **Pay ₱… deposit** (your deposit % of the total).
-3. On HitPay they pay with QR Ph (GCash, Maya, bank apps) or online banking, and come back to their booking page: **"You're booked! Deposit received ✓"**, the balance due at pickup, the security-deposit notice and pickup instructions. That page is their booking link.
-4. A booking is held for **30 minutes** while the deposit is unpaid; after that the scooter is released. Their booking page offers **Pay now** until then.
-5. **No double-booking:** the database itself refuses overlapping bookings for the same scooter, even if two people book at the same moment. After each return the scooter stays blocked for the **time between bookings** (default 30 min) for handover and checking.
+1. **Calendar:** a month view shows which days are free. With no scooter chosen it shows how many scooters are free each day (green = all free, amber = some booked, grey = fully booked); once a scooter is chosen it shows that scooter's booked days. Tapping a day sets the pickup date. It shows no customer details.
+2. **Times:** pickup and return time (any time of day, 30-minute steps; at least 1 hour). Days are counted in **24-hour blocks**: 9 AM → 9 AM next day = 1 day; a same-day rental = 1 day; returning later than the **grace period** (default 60 min) adds a day. Price = days × the scooter's daily rate. Scooters already booked during those times show as **Booked**.
+3. They fill in name, mobile, optional email, helmets (0–2), the **license photo** and notes.
+4. **Terms:** your terms and conditions are shown with an *I have read and agree* checkbox. The **GCash payment form only appears after they tick it.** It shows the café's GCash QR, name and number (from Admin → Settings → Payments), the exact **deposit** to send (your deposit % of the total), a field for the **GCash reference no.** and a **payment screenshot** upload.
+5. They tap **Book & send ₱… deposit** and land on their booking page: **"We're checking your GCash payment"**. The scooter is held for them right away (no 30-minute expiry). The page updates by itself once staff confirm: **"You're booked! Deposit received ✓"**. That page is their booking link.
+6. **No double-booking:** the database itself refuses overlapping bookings for the same scooter, even if two people book at the same moment — bookings waiting for GCash checking count too. After each return the scooter stays blocked for the **time between bookings** (default 30 min).
+7. Each booking keeps a **copy of the terms** the customer agreed to and when, so later edits to the terms don't change past bookings.
 
 ## Staff: Admin → Rentals
 Visible to full admins and staff with the **Scooter rentals** permission (Settings → Team).
-- **Bookings** — filters (Confirmed & on the road · Waiting for deposit · Returned & cancelled · All), *pickup today at …* / *due back today at …* hints and an **Overdue** badge when a scooter on the road is past its return time. Open a booking to see the customer (tap-to-call), dates, helmets, delivery address, notes, what to **collect at pickup**, the security deposit, and the **license photo** (private — only rental staff can open it). Buttons: **Mark picked up** → **Balance collected** → **Mark returned**, or **Cancel** with a reason. A cancelled booking with a paid deposit shows **Refund needed** → **Refund ₱… deposit** (needs the Refunds permission too).
+- **Bookings** — filters (Confirmed & on the road · **GCash to check (n)** · Returned & cancelled · All). Open a booking to see the customer (tap-to-call), times, helmets, notes, what to **collect at pickup**, the security deposit, the **license photo** and the **GCash reference + receipt screenshot** (both private — only rental staff can open them).
+  - Waiting for GCash: compare the reference and amount with your GCash app, then **Deposit verified** (→ confirmed; the customer gets the confirmation text) or **Payment not received — cancel** (cancelled with that reason; the customer is texted).
+  - Then **Mark picked up** → **Balance collected** → **Mark returned**, or **Cancel** with a reason.
+  - A cancelled booking with a verified deposit shows **Refund needed**: send the deposit back by GCash, then tap **Mark deposit refunded** (needs the Refunds permission; the customer is texted).
+- **Calendar** — month grid with each day's bookings (amber = GCash to check, green = confirmed, blue = on the road, grey = returned). Tap a day to list its pickups and returns; tap a booking to open it.
 - **Scooters** — add/edit name, short description, **daily rate**, photo, and *Show on the booking page*. Price changes only affect new bookings; hide a scooter instead of deleting it.
-- **Settings** — **Accept bookings** (off = the page shows *Coming soon*), online deposit %, delivery fee, longest rental (days), **late-return grace** (minutes), **time between bookings** (minutes), security deposit at pickup (+ note, e.g. "or leave a valid ID"), pickup instructions.
+- **Settings** — **Terms and conditions** (paste your own; **bookings stay closed — *Coming soon* — until terms are saved**), **Accept bookings**, GCash deposit %, longest rental (days), late-return grace, time between bookings, security deposit at pickup (+ note), pickup instructions. Deposits go to the café's GCash set in Admin → Settings → Payments.
+
+![Staff checking a GCash deposit](screenshots/44-staff-gcash-check.png)
 
 ## Text messages (SMS via Semaphore)
-Customers get a text when their **booking is confirmed** (deposit paid), a **pickup reminder** a few hours before pickup (default 3 hours; not sent for bookings made less than 30 minutes earlier), and a text if the booking is **cancelled** or the **deposit refunded**. Staff numbers you list get a **new-booking alert**. Each text is sent once (staff can **Resend** from the booking), and every booking shows its **text log**.
+Customers get a text when their **booking is confirmed** (after staff verify the GCash deposit), a **pickup reminder** a few hours before pickup (default 3 hours; not sent for bookings made less than 30 minutes earlier), and a text if the booking is **cancelled** or the **deposit refunded**. Staff numbers you list get a **new-booking alert** with the GCash reference to check. Each text is sent once (staff can **Resend** from the booking), and every booking shows its **text log**.
 
 Texts use plain characters ("P805", not "₱805") because one special character makes a text Unicode — 70 instead of 160 characters per SMS part. Most texts are 1–2 parts (the confirmation includes the booking link).
 
@@ -30,18 +40,19 @@ The pickup-reminder check runs in the database every 10 minutes and calls the we
 
 ## Going live checklist
 1. Add your scooters (with photos and daily rates).
-2. Set the deposit %, delivery fee, security deposit and pickup instructions.
-3. Give the people who run rentals the **Scooter rentals** permission (Settings → Team).
-4. Turn on **Accept bookings** and place one real test booking with a small deposit; refund it from the booking.
-
-HitPay must be set up on the website (it already is for café orders — same keys). Deposits arrive in the same HitPay account.
+2. Paste your **terms and conditions** in Rentals → Settings and save.
+3. Set the deposit %, security deposit and pickup instructions. Check the café's GCash QR/number in Settings → Payments.
+4. Give the people who run rentals the **Scooter rentals** permission (Settings → Team).
+5. Turn on **Accept bookings** and place one real test booking with a small deposit; verify it, then cancel and mark it refunded.
 
 ## Notes & limits
 - License photos are stored privately; consider deleting old ones periodically (Supabase → Storage → license-photos).
-- Not yet: email confirmations, a calendar view, damage/fuel charges — see docs/PHASE2.md ideas.
+- GCash receipts for rentals are stored privately under `payment-proofs/proofs/rentals/`.
+- Bookings made earlier with the HitPay online deposit still show and can be refunded through HitPay; new bookings use GCash only.
+- Not yet: email confirmations, damage/fuel charges — see docs/PHASE2.md ideas.
 
 ## For developers
-- DB: `supabase/migrations/0011_scooter_rentals.sql` + `0012_rental_times.sql` — `rental_settings` (incl. `grace_minutes`, `turnaround_minutes`), `scooters`, `rental_bookings` (`pickup_at`, `return_at`, `blocked_until` = return + turnaround; exclusion constraint `no_double_booking` on `tstzrange(pickup_at, blocked_until)`), `rental_days()` (24-h blocks with grace), `busy_scooters(pickup, return)`, `book_scooter()` (server pricing + validation), `scooter_bookings_between()` (calendar, no personal data), `get_booking_by_token()`, `mark_booking_paid()` (service role), `expire_unpaid_bookings()` (pg_cron every 5 min + on each booking), private `license-photos` bucket, `rentals` permission. Scenarios: `supabase/tests/scenarios_rentals.sql`.
-- API: `/api/rentals/checkout` (create/resume HitPay request for the deposit), `/api/rentals/verify` (return-check), `/api/rentals/refund`, `/api/rentals/sms` (cancel/resend texts, status), `/api/rentals/sms-test`, `/api/rentals/reminders` (cron); SMS code in `src/lib/sms.ts` (Semaphore) and `src/lib/rental-sms.ts` (templates, once-only sending, log); DB `0013_rental_sms.sql` (settings, sent stamps, `rental_sms_log`, reminder tick); the shared `/api/payments/webhook` confirms deposits too (`confirmPayment` tries orders, then bookings).
-- UI: `src/components/customer/{ScooterBooking,BookingStatusScreen,BaybayinScreen}.tsx`, `src/components/admin/RentalsAdmin.tsx`, `src/lib/rentals.ts`.
-- Test: `npm run test:rentals` (41 checks incl. SMS via a Semaphore stand-in, mock HitPay; start the app with the HitPay test env as in docs/PAYMENTS.md).
+- DB: `supabase/migrations/0011_scooter_rentals.sql` + `0012_rental_times.sql` — `rental_settings` (incl. `grace_minutes`, `turnaround_minutes`), `scooters`, `rental_bookings` (`pickup_at`, `return_at`, `blocked_until` = return + turnaround; exclusion constraint `no_double_booking` on `tstzrange(pickup_at, blocked_until)`), `rental_days()` (24-h blocks with grace), `busy_scooters(pickup, return)`, `book_scooter()` (server pricing + validation; v2 in `0014_rental_gcash_terms_calendar.sql`: requires terms agreed + GCash reference + receipt path, pickup only, `for_verification`, terms copy), `scooter_calendar(from, to)` (customer calendar, no personal data), `scooter_bookings_between()` (calendar, no personal data), `get_booking_by_token()`, `mark_booking_paid()` (service role), `expire_unpaid_bookings()` (pg_cron every 5 min + on each booking), private `license-photos` bucket, `rentals` permission. Scenarios: `supabase/tests/scenarios_rentals.sql`.
+- API: `/api/rentals/new-booking` (staff "check the GCash" text, once), `/api/rentals/checkout`, `/verify`, `/refund` (HitPay — older online-deposit bookings only), `/api/rentals/sms` (cancel/resend texts, status), `/api/rentals/sms-test`, `/api/rentals/reminders` (cron); SMS code in `src/lib/sms.ts` (Semaphore) and `src/lib/rental-sms.ts` (templates, once-only sending, log); DB `0013_rental_sms.sql` (settings, sent stamps, `rental_sms_log`, reminder tick); the shared `/api/payments/webhook` confirms deposits too (`confirmPayment` tries orders, then bookings).
+- UI: `src/components/customer/{ScooterBooking,AvailabilityCalendar,BookingStatusScreen,BaybayinScreen}.tsx`, `src/components/admin/RentalsAdmin.tsx`, `src/lib/rentals.ts`.
+- Test: `npm run test:rentals` (46 checks incl. terms gate, GCash receipt, calendars, verify/reject/refund, SMS via a Semaphore stand-in; start the app with the Semaphore test env as in the test file).

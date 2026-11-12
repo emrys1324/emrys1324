@@ -6,7 +6,7 @@ import { getAuthedSupabase, getSupabase } from "@/lib/supabase/client";
 import { formatPeso } from "@/lib/format";
 import { formatDateTime } from "@/lib/hours";
 import { uploadPublicImage } from "@/lib/upload";
-import { BOOKING_STATUS_LABEL, PAYMENT_LABEL, manilaDate, manilaDateOf, prettyDateTime, prettyTime, type BookingStatus, type RentalSettings, type Scooter } from "@/lib/rentals";
+import { BOOKING_STATUS_LABEL, PAYMENT_LABEL, addDays, manilaDate, manilaDateOf, monthGrid, monthLabel, prettyDateTime, prettyTime, touchesDay, type BookingStatus, type RentalSettings, type Scooter } from "@/lib/rentals";
 import { useStaffAccess } from "./StaffAccess";
 
 interface Booking {
@@ -34,6 +34,10 @@ interface Booking {
   notes: string | null;
   status: BookingStatus;
   payment_status: string;
+  payment_method: string | null;
+  gcash_reference: string | null;
+  payment_proof_path: string | null;
+  terms_agreed_at: string | null;
   payment_expires_at: string | null;
   deposit_paid_at: string | null;
   picked_up_at: string | null;
@@ -41,8 +45,8 @@ interface Booking {
   cancel_reason: string | null;
   created_at: string;
 }
-type Tab = "bookings" | "scooters" | "settings";
-const CANCEL_REASONS = ["Customer cancelled", "Scooter not available (repair)", "No-show at pickup", "Couldn't verify license"];
+type Tab = "bookings" | "calendar" | "scooters" | "settings";
+const CANCEL_REASONS = ["GCash payment not received", "Customer cancelled", "Scooter not available (repair)", "No-show at pickup", "Couldn't verify license"];
 const SMS_LABEL: Record<string, string> = { confirmed: "Booking confirmed", reminder: "Pickup reminder", cancelled: "Cancelled", refunded: "Deposit refunded", staff_alert: "Staff alert" };
 
 export function RentalsAdmin() {
@@ -52,7 +56,7 @@ export function RentalsAdmin() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="font-display text-2xl font-bold">Baybayin rentals</h1>
         <div role="tablist" aria-label="Rentals" className="flex gap-1 rounded-2xl bg-white p-1 shadow-card">
-          {(["bookings", "scooters", "settings"] as Tab[]).map((t) => (
+          {(["bookings", "calendar", "scooters", "settings"] as Tab[]).map((t) => (
             <button key={t} role="tab" aria-selected={tab === t} onClick={() => setTab(t)} className={`rounded-xl px-4 py-2 text-sm font-semibold capitalize ${tab === t ? "bg-coffee-800 text-cream" : "text-coffee-700"}`}>
               {t}
             </button>
@@ -60,6 +64,7 @@ export function RentalsAdmin() {
         </div>
       </div>
       {tab === "bookings" && <BookingsTab />}
+      {tab === "calendar" && <CalendarTab />}
       {tab === "scooters" && <ScootersTab />}
       {tab === "settings" && <SettingsTab />}
     </div>
@@ -67,11 +72,8 @@ export function RentalsAdmin() {
 }
 
 // ---------------------------------------------------------------- bookings
-function BookingsTab() {
+function useBookings() {
   const [list, setList] = useState<Booking[] | null>(null);
-  const [filter, setFilter] = useState<"active" | "awaiting" | "done" | "all">("active");
-  const [openId, setOpenId] = useState<string | null>(null);
-
   const load = useCallback(async () => {
     const { data } = await getSupabase().from("rental_bookings").select("*").order("pickup_at").order("created_at");
     setList((data as Booking[]) ?? []);
@@ -86,6 +88,17 @@ function BookingsTab() {
       if (ch) getSupabase().removeChannel(ch);
     };
   }, [load]);
+  return { list, load };
+}
+
+function BookingsTab() {
+  const { list, load } = useBookings();
+  const [filter, setFilter] = useState<"active" | "awaiting" | "done" | "all">("active");
+  const [openId, setOpenId] = useState<string | null>(null);
+  useEffect(() => {
+    // open on "GCash to check" when payments are waiting
+    if (list?.some((b) => b.status === "awaiting_deposit" && b.payment_status === "for_verification")) setFilter((f) => (f === "active" ? "awaiting" : f));
+  }, [list === null]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const now = Date.now();
   const expired = (b: Booking) => b.status === "awaiting_deposit" && !!b.payment_expires_at && new Date(b.payment_expires_at).getTime() < now;
@@ -106,6 +119,7 @@ function BookingsTab() {
   );
   const today = manilaDate();
   const open = list?.find((b) => b.id === openId) ?? null;
+  const toCheck = (list ?? []).filter((b) => b.status === "awaiting_deposit" && !expired(b)).length;
 
   if (!list) return <PageLoader />;
   return (
@@ -114,7 +128,7 @@ function BookingsTab() {
         {(
           [
             ["active", "Confirmed & on the road"],
-            ["awaiting", "Waiting for deposit"],
+            ["awaiting", `GCash to check${toCheck ? ` (${toCheck})` : ""}`],
             ["done", "Returned & cancelled"],
             ["all", "All"],
           ] as const
@@ -142,7 +156,7 @@ function BookingsTab() {
               </span>
               {overdue(b) && <Badge tone="red">Overdue</Badge>}
               <Badge tone={b.status === "cancelled" || expired(b) ? "red" : b.status === "awaiting_deposit" ? "amber" : b.status === "picked_up" ? "blue" : "green"}>
-                {expired(b) ? "Expired" : BOOKING_STATUS_LABEL[b.status]}
+                {expired(b) ? "Expired" : b.status === "awaiting_deposit" && b.payment_status === "for_verification" ? "GCash to check" : BOOKING_STATUS_LABEL[b.status]}
               </Badge>
             </button>
           </li>
@@ -156,6 +170,7 @@ function BookingsTab() {
 function BookingSheet({ booking: b, onClose, onChanged }: { booking: Booking | null; onClose: () => void; onChanged: () => void }) {
   const { can } = useStaffAccess();
   const [license, setLicense] = useState<string | null>(null);
+  const [proof, setProof] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
@@ -170,6 +185,7 @@ function BookingSheet({ booking: b, onClose, onChanged }: { booking: Booking | n
 
   useEffect(() => {
     setLicense(null);
+    setProof(null);
     setError(null);
     setNote(null);
     setCancelling(false);
@@ -179,6 +195,11 @@ function BookingSheet({ booking: b, onClose, onChanged }: { booking: Booking | n
       .storage.from("license-photos")
       .createSignedUrl(b.license_path, 600)
       .then(({ data }) => setLicense(data?.signedUrl ?? null));
+    if (b.payment_proof_path)
+      getSupabase()
+        .storage.from("payment-proofs")
+        .createSignedUrl(b.payment_proof_path, 600)
+        .then(({ data }) => setProof(data?.signedUrl ?? null));
   }, [b?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!b) return null;
@@ -194,8 +215,15 @@ function BookingSheet({ booking: b, onClose, onChanged }: { booking: Booking | n
     const { error } = await getSupabase().from("rental_bookings").update(patch).eq("id", b.id);
     if (error) setError(error.message);
     else if (patch.status === "cancelled") await sms("cancelled");
+    else if (patch.status === "confirmed") await sms("confirmed");
+    else if (patch.payment_status === "refunded") await sms("refunded");
     setBusy(null);
     onChanged();
+  };
+  const verifyGcash = () => update("Deposit verified", { status: "confirmed", payment_status: "deposit_paid" });
+  const markRefunded = () => {
+    if (!confirm(`Mark the ${formatPeso(b.deposit_amount)} deposit for ${b.booking_number} as sent back to the customer by GCash?`)) return;
+    update("Mark deposit refunded", { payment_status: "refunded" });
   };
   const refund = async () => {
     if (!confirm(`Refund the ${formatPeso(b.deposit_amount)} deposit for ${b.booking_number} through HitPay?`)) return;
@@ -251,12 +279,12 @@ function BookingSheet({ booking: b, onClose, onChanged }: { booking: Booking | n
                 <dd className="font-bold">{formatPeso(b.total)}</dd>
               </div>
               <div className="flex justify-between">
-                <dt>Deposit (online)</dt>
+                <dt>Deposit ({b.payment_method === "gcash" ? "GCash" : "online"})</dt>
                 <dd>{formatPeso(b.deposit_amount)}</dd>
               </div>
               <div className="flex justify-between font-semibold">
                 <dt>Collect at pickup</dt>
-                <dd data-testid="collect-at-pickup">{formatPeso(b.payment_status === "paid" ? 0 : Number(b.total) - (paid ? Number(b.deposit_amount) : 0))}</dd>
+                <dd data-testid="collect-at-pickup">{formatPeso(b.payment_status === "paid" ? 0 : Number(b.total) - (paid || b.payment_status === "for_verification" ? Number(b.deposit_amount) : 0))}</dd>
               </div>
               {Number(b.security_deposit) > 0 && (
                 <div className="flex justify-between">
@@ -267,7 +295,8 @@ function BookingSheet({ booking: b, onClose, onChanged }: { booking: Booking | n
             </dl>
             <p className="text-xs text-coffee-600">
               Booked {formatDateTime(b.created_at)}
-              {b.deposit_paid_at && ` · deposit paid ${formatDateTime(b.deposit_paid_at)}`}
+              {b.terms_agreed_at && ` · agreed to terms ${formatDateTime(b.terms_agreed_at)}`}
+              {b.deposit_paid_at && ` · deposit ${b.payment_method === "gcash" ? "verified" : "paid"} ${formatDateTime(b.deposit_paid_at)}`}
               {b.picked_up_at && ` · picked up ${formatDateTime(b.picked_up_at)}`}
               {b.returned_at && ` · returned ${formatDateTime(b.returned_at)}`}
             </p>
@@ -284,6 +313,23 @@ function BookingSheet({ booking: b, onClose, onChanged }: { booking: Booking | n
               <p className="text-sm text-coffee-600">Loading…</p>
             )}
             <p className="hint">Check the name matches and the license isn&apos;t expired at pickup.</p>
+            {b.payment_method === "gcash" && (
+              <div className="mt-4" data-testid="gcash-proof">
+                <p className="label">GCash deposit</p>
+                <p className="text-sm">
+                  Reference <strong className="font-mono">{b.gcash_reference}</strong> · should be <strong>{formatPeso(b.deposit_amount)}</strong>
+                </p>
+                {proof ? (
+                  <a href={proof} target="_blank" rel="noreferrer">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={proof} alt={`GCash receipt for ${b.booking_number}`} className="mt-1 max-h-96 w-full rounded-2xl border border-coffee-200 object-contain" data-testid="gcash-receipt" />
+                  </a>
+                ) : (
+                  <p className="text-sm text-coffee-600">{b.payment_proof_path ? "Loading…" : "No screenshot."}</p>
+                )}
+                <p className="hint">Check the reference and amount in your GCash app before verifying.</p>
+              </div>
+            )}
           </div>
         </div>
         <div className="rounded-2xl bg-white p-3" data-testid="sms-log">
@@ -320,10 +366,31 @@ function BookingSheet({ booking: b, onClose, onChanged }: { booking: Booking | n
         </div>
         {error && <Alert>{error}</Alert>}
         <div className="space-y-2">
+          {b.status === "awaiting_deposit" && b.payment_status === "for_verification" && (
+            <div className="grid gap-2 sm:grid-cols-2">
+              {btn("Deposit verified", verifyGcash, "btn-sage")}
+              <button className="btn-danger w-full" disabled={!!busy} onClick={() => update("Reject", { status: "cancelled", cancel_reason: "GCash payment not received" })}>
+                {busy === "Reject" ? <Spinner /> : "Payment not received — cancel"}
+              </button>
+            </div>
+          )}
           {b.status === "confirmed" && btn("Mark picked up", () => update("Mark picked up", { status: "picked_up" }))}
           {b.status === "picked_up" && btn("Mark returned", () => update("Mark returned", { status: "returned" }), "btn-sage")}
           {b.payment_status === "deposit_paid" && ["confirmed", "picked_up"].includes(b.status) && btn("Balance collected", () => update("Balance collected", { payment_status: "paid" }), "btn-secondary")}
-          {b.status === "cancelled" && paid && (can("refunds") ? btn(`Refund ${formatPeso(b.deposit_amount)} deposit`, refund, "btn-danger") : <p className="text-sm font-semibold text-red-800">Ask someone with the Refunds permission to refund the deposit.</p>)}
+          {b.status === "cancelled" &&
+            paid &&
+            (!can("refunds") ? (
+              <p className="text-sm font-semibold text-red-800">Ask someone with the Refunds permission to refund the deposit.</p>
+            ) : b.payment_method === "gcash" ? (
+              <>
+                <p className="text-sm text-coffee-700">
+                  Send {formatPeso(b.deposit_amount)} back to {b.customer_phone} by GCash, then mark it here.
+                </p>
+                {btn("Mark deposit refunded", markRefunded, "btn-danger")}
+              </>
+            ) : (
+              btn(`Refund ${formatPeso(b.deposit_amount)} deposit`, refund, "btn-danger")
+            ))}
           {["awaiting_deposit", "confirmed"].includes(b.status) &&
             (cancelling ? (
               <div className="space-y-2 rounded-2xl bg-cream p-3">
@@ -353,6 +420,104 @@ function BookingSheet({ booking: b, onClose, onChanged }: { booking: Booking | n
         </div>
       </div>
     </Sheet>
+  );
+}
+
+// ---------------------------------------------------------------- calendar
+function CalendarTab() {
+  const { list, load } = useBookings();
+  const today = manilaDate();
+  const [ym, setYm] = useState(() => ({ y: Number(today.slice(0, 4)), m: Number(today.slice(5, 7)) - 1 }));
+  const [day, setDay] = useState(today);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const grid = useMemo(() => monthGrid(ym.y, ym.m), [ym]);
+  if (!list) return <PageLoader />;
+  const now = Date.now();
+  const live = list.filter((b) => b.status !== "cancelled" && !(b.status === "awaiting_deposit" && b.payment_expires_at && new Date(b.payment_expires_at).getTime() < now));
+  const range = (b: Booking) => ({ pickup_at: b.pickup_at, blocked_until: b.return_at });
+  const on = (d: string) => live.filter((b) => touchesDay(range(b), d));
+  const shift = (n: number) => setYm(({ y, m }) => ({ y: m + n < 0 ? y - 1 : m + n > 11 ? y + 1 : y, m: (m + n + 12) % 12 }));
+  const dayList = on(day);
+  const open = list.find((b) => b.id === openId) ?? null;
+  const tone = (b: Booking) => (b.status === "awaiting_deposit" ? "bg-amber-200 text-amber-900" : b.status === "picked_up" ? "bg-sky-200 text-sky-900" : b.status === "returned" ? "bg-stone-200 text-stone-700" : "bg-sage-200 text-sage-800");
+  return (
+    <section className="space-y-3" data-testid="staff-calendar" data-month={`${ym.y}-${String(ym.m + 1).padStart(2, "0")}`}>
+      <div className="card space-y-2 p-4">
+        <div className="flex items-center justify-between">
+          <button className="btn-ghost btn-sm" onClick={() => shift(-1)} aria-label="Previous month">
+            ‹
+          </button>
+          <p className="font-semibold">{monthLabel(ym.y, ym.m)}</p>
+          <button className="btn-ghost btn-sm" onClick={() => shift(1)} aria-label="Next month">
+            ›
+          </button>
+        </div>
+        <div className="grid grid-cols-7 gap-1 text-center text-xs font-semibold text-coffee-600">
+          {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
+            <span key={d}>{d}</span>
+          ))}
+        </div>
+        <div className="grid grid-cols-7 gap-1">
+          {grid.map((d, i) => {
+            if (!d) return <span key={i} />;
+            const bs = on(d);
+            return (
+              <button
+                key={d}
+                onClick={() => setDay(d)}
+                data-day={d}
+                aria-label={`${d}: ${bs.length} booking${bs.length === 1 ? "" : "s"}`}
+                className={`min-h-[4.5rem] rounded-lg border p-1 text-left align-top ${d === day ? "border-coffee-800 ring-1 ring-coffee-800" : "border-coffee-100"} ${d === today ? "bg-cream" : "bg-white"}`}
+              >
+                <span className="block text-xs font-bold">{Number(d.slice(8))}</span>
+                {bs.slice(0, 3).map((b) => (
+                  <span key={b.id} className={`mt-0.5 block truncate rounded px-1 text-[10px] font-semibold leading-4 ${tone(b)}`}>
+                    {b.scooter_name}
+                  </span>
+                ))}
+                {bs.length > 3 && <span className="block text-[10px] text-coffee-600">+{bs.length - 3} more</span>}
+              </button>
+            );
+          })}
+        </div>
+        <p className="flex flex-wrap gap-3 text-xs text-coffee-700">
+          <span><span className="mr-1 inline-block h-3 w-3 rounded bg-amber-200 align-middle" />GCash to check</span>
+          <span><span className="mr-1 inline-block h-3 w-3 rounded bg-sage-200 align-middle" />confirmed</span>
+          <span><span className="mr-1 inline-block h-3 w-3 rounded bg-sky-200 align-middle" />on the road</span>
+          <span><span className="mr-1 inline-block h-3 w-3 rounded bg-stone-200 align-middle" />returned</span>
+        </p>
+      </div>
+      <div className="card space-y-2 p-4">
+        <h2 className="font-semibold">
+          {new Date(day + "T00:00:00").toLocaleDateString("en-PH", { weekday: "long", month: "long", day: "numeric" })}
+          {day === today && " · today"}
+        </h2>
+        {dayList.length === 0 && <p className="text-sm text-coffee-700">No bookings on this day — every scooter is free.</p>}
+        <ul className="grid gap-2">
+          {dayList.map((b) => (
+            <li key={b.id}>
+              <button onClick={() => setOpenId(b.id)} className="flex w-full flex-wrap items-center gap-2 rounded-xl border border-coffee-100 p-3 text-left" data-testid="calendar-booking">
+                <span className="font-mono font-bold">{b.booking_number}</span>
+                <span className="min-w-0 flex-1 text-sm">
+                  <strong>{b.scooter_name}</strong> · {b.customer_name}
+                  <span className="block text-coffee-700">
+                    {manilaDateOf(b.pickup_at) === day ? `Pickup ${prettyTime(b.pickup_at)}` : `since ${prettyDateTime(b.pickup_at)}`} ·{" "}
+                    {manilaDateOf(b.return_at) === day ? `return ${prettyTime(b.return_at)}` : `until ${prettyDateTime(b.return_at)}`}
+                  </span>
+                </span>
+                <Badge tone={b.status === "awaiting_deposit" ? "amber" : b.status === "picked_up" ? "blue" : "green"}>
+                  {b.status === "awaiting_deposit" && b.payment_status === "for_verification" ? "GCash to check" : BOOKING_STATUS_LABEL[b.status]}
+                </Badge>
+              </button>
+            </li>
+          ))}
+        </ul>
+        <button className="btn-ghost btn-sm" onClick={() => setDay(addDays(day, 1))}>
+          Next day →
+        </button>
+      </div>
+      <BookingSheet booking={open} onClose={() => setOpenId(null)} onChanged={load} />
+    </section>
   );
 }
 
@@ -467,7 +632,7 @@ function ScootersTab() {
 // ---------------------------------------------------------------- settings
 function SettingsTab() {
   const [s, setS] = useState<RentalSettings | null>(null);
-  const [hitpay, setHitpay] = useState<{ configured: boolean; testMode: boolean } | null>(null);
+  const [gcash, setGcash] = useState<{ number: string | null; qr: string | null } | null>(null);
   const [smsStatus, setSmsStatus] = useState<{ configured: boolean; sender: string | null } | null>(null);
   const [testPhone, setTestPhone] = useState("");
   const [testMsg, setTestMsg] = useState<{ tone: "red" | "green"; text: string } | null>(null);
@@ -482,14 +647,11 @@ function SettingsTab() {
       .then((r) => r.json())
       .then(setSmsStatus)
       .catch(() => setSmsStatus({ configured: false, sender: null }));
-    fetch("/api/payments/status")
-      .then((r) => r.json())
-      .then(setHitpay)
-      .catch(() => setHitpay({ configured: false, testMode: false }));
+    db.from("store_settings").select("gcash_number, gcash_qr_url").eq("id", 1).single().then(({ data }) => setGcash({ number: data?.gcash_number ?? null, qr: data?.gcash_qr_url ?? null }));
   }, []);
   if (!s) return <PageLoader />;
   const set = <K extends keyof RentalSettings>(k: K, v: RentalSettings[K]) => setS({ ...s, [k]: v });
-  const ready = !!hitpay?.configured;
+  const ready = !!s.terms?.trim();
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true);
@@ -498,10 +660,10 @@ function SettingsTab() {
       .from("rental_settings")
       .update({
         bookings_enabled: s.bookings_enabled && ready,
+        terms: s.terms?.trim() || null,
         deposit_percent: Math.min(100, Math.max(10, Number(s.deposit_percent) || 30)),
         security_deposit: Math.max(0, Number(s.security_deposit) || 0),
         security_deposit_note: s.security_deposit_note?.trim() || null,
-        delivery_fee: Math.max(0, Number(s.delivery_fee) || 0),
         pickup_note: s.pickup_note?.trim() || null,
         max_days: Math.min(90, Math.max(1, Number(s.max_days) || 30)),
         grace_minutes: Math.min(240, Math.max(0, Number(s.grace_minutes) || 0)),
@@ -521,27 +683,26 @@ function SettingsTab() {
       <label className="flex items-center justify-between gap-3">
         <span>
           <span className="block font-bold">Accept bookings</span>
-          <span className="text-sm text-coffee-700">Off = the Baybayin page shows &ldquo;Coming soon&rdquo;. On = customers can book and pay the deposit online.</span>
+          <span className="text-sm text-coffee-700">Off = the Baybayin page shows &ldquo;Coming soon&rdquo;. On = customers can book and send the deposit by GCash.</span>
         </span>
         <Toggle checked={s.bookings_enabled && ready} onChange={(v) => set("bookings_enabled", v)} disabled={!ready} label="Accept bookings" />
       </label>
-      {hitpay && !ready && <p className="rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-900">Online payment (HitPay) isn&apos;t set up on the website yet, so bookings can&apos;t open. See docs/PAYMENTS.md.</p>}
-      {ready && hitpay?.testMode && <p className="rounded-2xl bg-sky-100 px-4 py-3 text-sm text-sky-900"><strong>Test mode:</strong> HitPay sandbox is active — deposits aren&apos;t real money.</p>}
+      {!ready && <p className="rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-900" data-testid="terms-needed">Write your terms and conditions below and save — bookings can&apos;t open without them.</p>}
+      {s.bookings_enabled && !s.terms?.trim() && <p className="text-sm text-amber-900">Bookings are switched on but stay closed (&ldquo;Coming soon&rdquo;) until terms are saved.</p>}
+      {gcash && (
+        <p className="rounded-2xl bg-white px-4 py-3 text-sm text-coffee-800 ring-1 ring-coffee-100">
+          Deposits are paid to the café&apos;s GCash from <strong>Settings → Payments</strong>
+          {gcash.number ? ` (${gcash.number})` : ""}.{!gcash.qr && !gcash.number && <strong className="text-red-700"> No GCash number or QR is set there yet.</strong>}
+        </p>
+      )}
       {s.bookings_enabled && scooterCount === 0 && <p className="rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-900">No scooters are shown yet — add at least one in the Scooters tab.</p>}
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-2">
         <div>
           <label className="label" htmlFor="deposit-percent">
-            Online deposit (%)
+            GCash deposit (%)
           </label>
           <input id="deposit-percent" className="input" inputMode="numeric" {...num("deposit_percent")} />
-          <p className="hint">10–100% of the rental, paid when booking.</p>
-        </div>
-        <div>
-          <label className="label" htmlFor="delivery-fee">
-            Delivery fee (₱)
-          </label>
-          <input id="delivery-fee" className="input" inputMode="decimal" {...num("delivery_fee")} />
-          <p className="hint">0 = free delivery.</p>
+          <p className="hint">10–100% of the rental, sent by GCash when booking.</p>
         </div>
         <div>
           <label className="label" htmlFor="max-days">
@@ -582,6 +743,16 @@ function SettingsTab() {
         </div>
       </div>
       <div>
+        <label className="label" htmlFor="rental-terms">
+          Terms and conditions
+        </label>
+        <textarea id="rental-terms" className="input min-h-[12rem] font-normal leading-relaxed" value={s.terms ?? ""} onChange={(e) => set("terms", e.target.value)} maxLength={20000} placeholder="Paste your rental terms here…" />
+        <p className="hint">
+          Customers must tick &ldquo;I agree&rdquo; before the GCash payment form appears. Each booking keeps a copy of the terms it was made under
+          {s.terms_updated_at ? ` · last changed ${formatDateTime(s.terms_updated_at)}` : ""}.
+        </p>
+      </div>
+      <div>
         <label className="label" htmlFor="pickup-note">
           Pickup instructions
         </label>
@@ -591,7 +762,7 @@ function SettingsTab() {
         <label className="flex items-center justify-between gap-3">
           <span>
             <span className="block font-bold">Text messages (SMS)</span>
-            <span className="text-sm text-coffee-700">Booking confirmed, pickup reminder, cancelled and deposit refunded — to the customer; plus a new-booking alert to staff. Sent through Semaphore.</span>
+            <span className="text-sm text-coffee-700">Booking confirmed (after you verify the GCash deposit), pickup reminder, cancelled and deposit refunded — to the customer; plus a new-booking alert to staff. Sent through Semaphore.</span>
           </span>
           <Toggle checked={!!s.sms_enabled} onChange={(v) => set("sms_enabled", v)} label="Send text messages" />
         </label>
