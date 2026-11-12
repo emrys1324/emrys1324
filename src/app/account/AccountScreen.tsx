@@ -12,6 +12,7 @@ import { signOutAndGo } from "@/lib/native";
 import { formatPeso, normalizePhone, ORDER_TYPE_LABEL, STATUS_LABEL } from "@/lib/format";
 import { formatDateTime } from "@/lib/hours";
 import { useStoreSettings } from "@/lib/store-settings";
+import { accountTexts } from "@/lib/brands";
 import type { Order, Zone } from "@/lib/types";
 import type { User } from "@supabase/supabase-js";
 
@@ -39,7 +40,7 @@ export function AccountScreen() {
 
   return (
     <div className="min-h-screen pb-10">
-      <StoreHeader settings={settings} open={open} back="/" />
+      <StoreHeader settings={settings} open={open} back="/" brand="account" />
       <main className="mx-auto max-w-lg px-4 py-5">
         {user === undefined ? <PageLoader /> : user ? <Profile user={user} /> : <AuthForms />}
       </main>
@@ -48,6 +49,8 @@ export function AccountScreen() {
 }
 
 function AuthForms() {
+  const { settings } = useStoreSettings();
+  const at = accountTexts(settings);
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -85,8 +88,8 @@ function AuthForms() {
   return (
     <div className="space-y-4">
       <div>
-        <h1 className="font-display text-2xl font-bold">{mode === "signin" ? "Welcome back" : "Create an account"}</h1>
-        <p className="text-coffee-700">Optional — save your address and see your past orders. You can always order as a guest.</p>
+        <h1 className="font-display text-2xl font-bold">{mode === "signin" ? at.title : "Create an account"}</h1>
+        {at.subtitle && <p className="text-coffee-700">{at.subtitle}</p>}
       </div>
       <div className="grid grid-cols-2 gap-2 rounded-2xl bg-coffee-100 p-1">
         {(["signin", "signup"] as const).map((m) => (

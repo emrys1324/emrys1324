@@ -48,15 +48,29 @@ select pg_temp.check((select payment_method = 'gcash' and payment_status = 'for_
                       and terms_agreed_at is not null and terms_snapshot like '1. Bring a valid%'
                       from rental_bookings where public_token = (select (r->>'token')::uuid from b1)), 'GCash receipt + reference saved, waiting for staff (no auto-expiry), agreed terms recorded');
 
+-- pickup/return only within opening hours (default 8:00 AM – 10:00 PM)
+set role anon;
+select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 502, 512))$q$, 'Pickup and return are from 8:00 AM to 10:00 PM only');
+select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 503, 517.5))$q$, 'Pickup and return are from 8:00 AM to 10:00 PM only');
+select pg_temp.check((book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 503, 517))->>'days')::int = 1, 'pickup at 8:00 AM and return at 10:00 PM are allowed (the edges of the hours)');
+reset role;
+update rental_settings set open_time = '06:00', close_time = '23:30';
+set role anon;
+select pg_temp.check((book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 550, 562))->>'days')::int = 1, 'owner-set hours apply (6:00 AM pickup allowed after widening the hours)');
+reset role;
+select pg_temp.expect_error($q$update rental_settings set open_time = '22:00', close_time = '08:00'$q$, 'rental_hours_valid');
+select pg_temp.expect_error($q$update rental_settings set messenger_url = 'javascript:alert(1)'$q$, 'rental_messenger_url');
+update rental_settings set open_time = '08:00', close_time = '22:00', messenger_url = 'https://m.me/baybayin';
+
 -- online deposit (HitPay): only when switched on; no GCash receipt needed; 30-minute hold
 set role anon;
-select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 400, 424, '{"payment_method": "online", "gcash_reference": null, "payment_proof_path": null}'))$q$, 'Online payment is not available');
-select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 400, 424, '{"payment_method": "cash"}'))$q$, 'choose how to pay');
+select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 408, 432, '{"payment_method": "online", "gcash_reference": null, "payment_proof_path": null}'))$q$, 'Online payment is not available');
+select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 408, 432, '{"payment_method": "cash"}'))$q$, 'choose how to pay');
 reset role;
 update rental_settings set online_enabled = true;
 set role anon;
 create temp table b_online on commit preserve rows as
-  select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 400, 424, '{"payment_method": "online", "gcash_reference": null, "payment_proof_path": null}')) r;
+  select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 408, 432, '{"payment_method": "online", "gcash_reference": null, "payment_proof_path": null}')) r;
 reset role;
 select pg_temp.check((select payment_method = 'online' and payment_status = 'awaiting_payment' and gcash_reference is null and payment_proof_path is null
                       and payment_expires_at between now() + interval '29 minutes' and now() + interval '31 minutes' and terms_snapshot is not null
@@ -77,16 +91,16 @@ select pg_temp.check((book_scooter(pg_temp.req('a1000000-0000-0000-0000-00000000
 select pg_temp.check((select count(*) from busy_scooters(((select t0 from d) + interval '10 hours') at time zone 'Asia/Manila', ((select t0 from d) + interval '12 hours') at time zone 'Asia/Manila')) = 1, 'a booking waiting for GCash verification already holds the scooter');
 
 -- validation
-select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 300, 310, '{"terms_agreed": false}'))$q$, 'terms and conditions');
-select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 300, 310, '{"gcash_reference": "12"}'))$q$, 'GCash reference');
-select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 300, 310, '{"payment_proof_path": null}'))$q$, 'screenshot of your GCash');
-select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 300, 310, '{"payment_proof_path": "proofs/2026/cafe-order.jpg"}'))$q$, 'screenshot of your GCash');
-select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 300.25, 310))$q$, 'hour or half hour');
+select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 300, 312, '{"terms_agreed": false}'))$q$, 'terms and conditions');
+select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 300, 312, '{"gcash_reference": "12"}'))$q$, 'GCash reference');
+select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 300, 312, '{"payment_proof_path": null}'))$q$, 'screenshot of your GCash');
+select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 300, 312, '{"payment_proof_path": "proofs/2026/cafe-order.jpg"}'))$q$, 'screenshot of your GCash');
+select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 300.25, 312))$q$, 'hour or half hour');
 select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', -100, -90))$q$, 'pickup time has passed');
 select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 300, 300.5))$q$, 'at least 1 hour');
 select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 300, 700))$q$, 'up to 14 days');
-select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 300, 310, '{"customer_phone": "12345"}'))$q$, '09XXXXXXXXX');
-select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 300, 310, '{"license_path": null}'))$q$, 'license');
+select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 300, 312, '{"customer_phone": "12345"}'))$q$, '09XXXXXXXXX');
+select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 300, 312, '{"license_path": null}'))$q$, 'license');
 select pg_temp.expect_error($q$insert into rental_bookings (scooter_id, scooter_name, customer_name, customer_phone, start_date, end_date, pickup_at, return_at, blocked_until, days, daily_rate, total, deposit_amount, license_path) values ('a1000000-0000-0000-0000-000000000002','x','x','09171112222',current_date,current_date,now(),now()+interval '2 hours',now()+interval '2 hours',1,1,1,1,'licenses/x')$q$, 'row-level security');
 
 -- guests: no table access; status by link; calendar without personal details

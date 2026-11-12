@@ -67,6 +67,12 @@ export function SettingsAdmin() {
         baybayin_name: clean(s.baybayin_name),
         baybayin_tagline: clean(s.baybayin_tagline),
         baybayin_header_color: isHex(s.baybayin_header_color) ? s.baybayin_header_color : null,
+        account_name: clean(s.account_name),
+        account_tagline: clean(s.account_tagline),
+        account_logo_url: s.account_logo_url || null,
+        account_header_color: isHex(s.account_header_color) ? s.account_header_color : null,
+        account_title: clean(s.account_title),
+        account_subtitle: clean(s.account_subtitle),
         site_icons: s.site_icons ?? null,
         background_url: s.background_url || null,
         background_fade: Math.min(95, Math.max(40, Number(s.background_fade) || 85)),
@@ -230,12 +236,13 @@ function imageSize(file: File): Promise<{ w: number; h: number } | null> {
   });
 }
 
-type BrandTab = "site" | "cafe" | "baybayin";
-type UploadKind = "logo" | "site_logo" | "baybayin" | "background";
+type BrandTab = "site" | "cafe" | "baybayin" | "account";
+type UploadKind = "logo" | "site_logo" | "baybayin" | "account" | "background";
 const BRAND_TABS: { key: BrandTab; label: string; hint: string }[] = [
   { key: "site", label: "Welcome page", hint: "The home page where customers choose the café or scooter rental, plus the website icon." },
-  { key: "cafe", label: "Pahuway Cafe", hint: "Header on the menu, checkout, order status and account pages." },
-  { key: "baybayin", label: "Baybayin", hint: "Header on the Baybayin scooter rental pages (now a Coming soon page) and its home-page card." },
+  { key: "cafe", label: "Pahuway Cafe", hint: "Header on the menu, checkout and order status pages." },
+  { key: "baybayin", label: "Baybayin", hint: "Header on the Baybayin scooter rental pages and its home-page card." },
+  { key: "account", label: "Account page", hint: "The customer sign-in / account page (“Welcome back”): its own header, icon and heading. Empty fields use the café's." },
 ];
 
 function BrandingSection({
@@ -262,10 +269,10 @@ function BrandingSection({
       if (kind !== "background" && Math.min(size.w, size.h) < 128) throw new Error("Logo is too small — please use at least 256 × 256 pixels.");
       if (kind === "background" && Math.max(size.w, size.h) < 1000) throw new Error("Background is too small — please use at least 1600 pixels wide so it stays sharp.");
       const url = await uploadPublicImage(file, "branding", { maxDim: kind === "background" ? 2400 : 800 });
-      const field = ({ logo: "logo_url", site_logo: "site_logo_url", baybayin: "baybayin_logo_url", background: "background_url" } as const)[kind];
+      const field = ({ logo: "logo_url", site_logo: "site_logo_url", baybayin: "baybayin_logo_url", account: "account_logo_url", background: "background_url" } as const)[kind];
       set(field, url);
       const squareNote = kind !== "background" && Math.abs(size.w - size.h) > Math.min(size.w, size.h) * 0.1 ? " Tip: a square logo looks best — it's shown in a circle." : "";
-      const what = { logo: "Logo", site_logo: "Welcome page logo", baybayin: "Baybayin logo", background: "Background" }[kind];
+      const what = { logo: "Logo", site_logo: "Welcome page logo", baybayin: "Baybayin logo", account: "Account page icon", background: "Background" }[kind];
       setMsg({ tone: "green", text: `${what} uploaded — press Save settings to publish it.${squareNote}` });
     } catch (err) {
       setMsg({ tone: "red", text: (err as Error).message });
@@ -288,6 +295,7 @@ function BrandingSection({
   const site = brandOf(s, "site");
   const cafe = brandOf(s, "cafe");
   const bay = brandOf(s, "baybayin");
+  const acct = brandOf(s, "account");
   const fade = s.background_fade ?? 85;
   const active = BRAND_TABS.find((t) => t.key === tab)!;
   const text = (k: keyof StoreSettings) => ({ value: (s[k] as string | null | undefined) ?? "", onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => set(k, e.target.value as never) });
@@ -401,6 +409,35 @@ function BrandingSection({
               hint="Shown in the Baybayin header, on its home-page card and Coming soon page. Square works best, at least 256 × 256 px. Max 5 MB."
             />
             <ColorField id="baybayin-header-color" label="Baybayin header colour" value={s.baybayin_header_color ?? null} fallback="#fbf7f0" onChange={(v) => set("baybayin_header_color", v)} />
+          </>
+        )}
+
+        {tab === "account" && (
+          <>
+            <BrandHeaderPreview brand={acct} testId="account-header-preview" />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <TextInput id="account-name" label="Header title" placeholder={cafe.name} maxLength={40} hint="Empty = the café's name." {...text("account_name")} />
+              <TextInput id="account-tagline" label="Tagline" placeholder={cafe.tagline} maxLength={60} hint="Small line under the title (wider screens)." {...text("account_tagline")} />
+            </div>
+            <LogoField
+              label="Account page icon"
+              preview={acct.logo}
+              emoji={acct.emoji}
+              ariaUpload="Upload account page icon"
+              testId="account-logo-preview"
+              uploading={uploading}
+              hasCustom={!!s.account_logo_url}
+              clearLabel="Use the café logo"
+              onUpload={(f) => upload(f, "account")}
+              onClear={() => set("account_logo_url", null)}
+              hint="Shown in the account page header. Square works best, at least 256 × 256 px. Max 5 MB."
+            />
+            <ColorField id="account-header-color" label="Account page header colour" value={s.account_header_color ?? null} fallback={isHex(cafe.color) ? cafe.color : "#fbf7f0"} onChange={(v) => set("account_header_color", v)} />
+            <div className="space-y-3 border-t border-coffee-100 pt-4">
+              <p className="font-bold">Sign-in heading</p>
+              <TextInput id="account-title-input" label="Big title" placeholder={DEFAULTS.accountTitle} maxLength={60} {...text("account_title")} />
+              <TextInput id="account-subtitle-input" label="Line under the title" placeholder={DEFAULTS.accountSubtitle} maxLength={160} multiline {...text("account_subtitle")} />
+            </div>
           </>
         )}
       </div>
