@@ -230,6 +230,18 @@ async function payGcash(page, ref = "1012 345 678901") {
   await until(async () => (await cust2.getByRole("radio", { name: "Honda Click 125", exact: true }).count()) === 1, "Honda free after return");
   await cust2.getByRole("radio", { name: "Honda Click 125", exact: true }).click();
   assert((await cust2.getByTestId("availability-calendar").locator(`[data-day="${mid}"]`).getAttribute("data-tone")) === "free", "once marked returned, the scooter is open for booking again right away (times + calendar)");
+  const yam = sql("select id from scooters where name = 'Yamaha Mio'");
+  sql(`insert into rental_bookings (scooter_id, scooter_name, customer_name, customer_phone, start_date, end_date, pickup_at, return_at, blocked_until, days, daily_rate, total, deposit_amount, license_path, status, payment_status)
+       values ('${yam}', 'Yamaha Mio', 'Late Larry', '09170000009', current_date - 2, current_date - 1, now() - interval '2 days', now() - interval '1 day', now() - interval '1 day' + interval '30 minutes', 1, 400, 400, 120, 'licenses/x.jpg', 'picked_up', 'deposit_paid')`);
+  await cust2.goto(BASE + "/baybayin");
+  await setTimes(cust2, ymd(45), "10:00", ymd(46), "10:00");
+  await until(async () => (await cust2.getByRole("radio", { name: "Yamaha Mio (booked)" }).count()) === 1, "overdue Yamaha unavailable");
+  assert(true, "an overdue scooter (picked up, not returned) can't be booked for any date — even weeks ahead");
+  sql("update rental_bookings set status = 'returned' where customer_name = 'Late Larry'");
+  await cust2.reload();
+  await setTimes(cust2, ymd(45), "10:00", ymd(46), "10:00");
+  await until(async () => (await cust2.getByRole("radio", { name: "Yamaha Mio", exact: true }).count()) === 1, "Yamaha free after return");
+  assert(true, "once the overdue scooter is marked returned, it can be booked again");
   await admin.keyboard.press("Escape");
 
   // ---------- staff reject a payment ----------
