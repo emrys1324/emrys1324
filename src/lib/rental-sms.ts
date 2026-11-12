@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { sendSms, smsConfigured } from "./sms";
 
 export type SmsKind = "confirmed" | "reminder" | "cancelled" | "refunded" | "staff_alert";
-const STAMP: Partial<Record<SmsKind, string>> = { confirmed: "sms_confirmed_at", reminder: "sms_reminded_at", cancelled: "sms_cancelled_at", refunded: "sms_refunded_at" };
+const STAMP: Partial<Record<SmsKind, string>> = { confirmed: "sms_confirmed_at", reminder: "sms_reminded_at", cancelled: "sms_cancelled_at", refunded: "sms_refunded_at", staff_alert: "sms_staff_alert_at" };
 
 interface Row {
   id: string;
@@ -21,6 +21,8 @@ interface Row {
   deposit_amount: number;
   security_deposit: number;
   payment_status: string;
+  payment_method?: string | null;
+  gcash_reference?: string | null;
   status: string;
   cancel_reason: string | null;
 }
@@ -59,9 +61,11 @@ export function bookingMessage(kind: SmsKind, b: Row, c: Awaited<ReturnType<type
     case "cancelled":
       return `${c.brand}: Booking ${b.booking_number} (${b.scooter_name}, ${when(b.pickup_at)}) has been cancelled.${b.cancel_reason ? ` Reason: ${b.cancel_reason}.` : ""}${["deposit_paid", "paid"].includes(b.payment_status) ? " Your deposit will be refunded." : ""}`;
     case "refunded":
-      return `${c.brand}: Your ${peso(b.deposit_amount)} deposit for ${b.booking_number} has been refunded. It may take a few days to reach your account.`;
+      return b.payment_method === "gcash"
+        ? `${c.brand}: Your ${peso(b.deposit_amount)} deposit for ${b.booking_number} has been sent back to your GCash.`
+        : `${c.brand}: Your ${peso(b.deposit_amount)} deposit for ${b.booking_number} has been refunded. It may take a few days to reach your account.`;
     case "staff_alert":
-      return `${c.brand}: New booking ${b.booking_number} - ${b.customer_name} ${b.customer_phone}, ${b.scooter_name}, ${when(b.pickup_at)} to ${when(b.return_at)}${b.delivery ? `, DELIVERY to ${b.delivery_address}` : ""}. Deposit ${peso(b.deposit_amount)} paid.`;
+      return `${c.brand}: New booking ${b.booking_number} - ${b.customer_name} ${b.customer_phone}, ${b.scooter_name}, ${when(b.pickup_at)} to ${when(b.return_at)}${b.delivery ? `, DELIVERY to ${b.delivery_address}` : ""}. ${b.payment_status === "for_verification" ? `GCash deposit ${peso(b.deposit_amount)} ref ${b.gcash_reference} - please check.` : `Deposit ${peso(b.deposit_amount)} paid.`}`;
   }
 }
 

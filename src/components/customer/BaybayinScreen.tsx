@@ -4,18 +4,18 @@ import { StoreHeader } from "./Header";
 import { Badge } from "@/components/ui";
 import { useStoreSettings } from "@/lib/store-settings";
 import { brandOf, welcomeTexts } from "@/lib/brands";
-import { useRentalSettings } from "@/lib/rentals";
+import { bookingsOpen, useRentalSettings } from "@/lib/rentals";
 import { ScooterBooking } from "./ScooterBooking";
 import { PageLoader } from "@/components/ui";
 
-/** Baybayin scooter rental — a "coming soon" page with Baybayin's own header (rental pages come later). */
+/** Baybayin scooter rental — booking form when bookings are open (switch on + terms written), else "coming soon". */
 export function BaybayinScreen() {
   const { settings, open } = useStoreSettings();
   const bay = brandOf(settings, "baybayin");
   const cafe = brandOf(settings, "cafe");
   const t = welcomeTexts(settings);
   const rs = useRentalSettings();
-  if (rs?.bookings_enabled)
+  if (rs && bookingsOpen(rs))
     return (
       <div className="min-h-screen">
         <StoreHeader settings={settings} open={open} brand="baybayin" back="/" />
