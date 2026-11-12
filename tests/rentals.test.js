@@ -348,6 +348,37 @@ async function payGcash(page, ref = "1012 345 678901") {
   assert(true, "tapping a calendar booking opens its details");
   await admin.keyboard.press("Escape");
 
+  // ---------- number of units ----------
+  await admin.getByRole("tab", { name: "scooters" }).click();
+  await admin.getByTestId("scooter-row").filter({ hasText: "Yamaha Mio" }).getByRole("button", { name: "Edit" }).click();
+  await admin.locator("#scooter-units").fill("0");
+  await admin.getByRole("button", { name: "Save scooter" }).click();
+  await admin.getByText("Number of units must be a whole number from 1 to 50.").waitFor();
+  await admin.locator("#scooter-units").fill("2");
+  await admin.getByRole("button", { name: "Save scooter" }).click();
+  await admin.getByText("Yamaha Mio saved.").waitFor();
+  assert((await admin.getByTestId("scooter-row").filter({ hasText: "Yamaha Mio" }).textContent()).includes("2 units") && sql("select units from scooters where name = 'Yamaha Mio'") === "2", "admin sets the number of units (Yamaha × 2)");
+  const yamOpt = (pg) => pg.getByTestId("scooter-option").filter({ hasText: "Yamaha Mio" });
+  const u1 = await (await browser.newContext(phone)).newPage();
+  await book(u1, { scooter: "Yamaha Mio", start: ymd(60), end: ymd(61), name: "Uno Uy", phone: "09231234567" });
+  assert((await yamOpt(u1).textContent()).includes("2 of 2 left"), "booking page shows how many units are left (2 of 2)");
+  await payGcash(u1);
+  const u2 = await (await browser.newContext(phone)).newPage();
+  await book(u2, { scooter: "Yamaha Mio", start: ymd(60), end: ymd(61), name: "Dos Diaz", phone: "09241234567" });
+  assert((await yamOpt(u2).textContent()).includes("1 of 2 left"), "after one booking: 1 of 2 left for the same dates");
+  await payGcash(u2);
+  const u3 = await (await browser.newContext(phone)).newPage();
+  await u3.goto(BASE + "/baybayin");
+  await setTimes(u3, ymd(60), "09:00", ymd(61), "09:00");
+  await until(async () => (await u3.getByRole("radio", { name: "Yamaha Mio (booked)" }).count()) === 1, "Yamaha fully booked");
+  assert(true, "two customers booked both Yamaha units for the same dates; a third sees it as Booked");
+  await (await dayCell(u3, u3.getByTestId("availability-calendar"), ymd(60))).waitFor();
+  await u3.getByRole("radio", { name: "Honda Click 125", exact: true }).click();
+  await setTimes(u3, ymd(62), "09:00", ymd(63), "09:00");
+  await u3.getByRole("radio", { name: "Yamaha Mio", exact: true }).click();
+  const tone60 = await (await dayCell(u3, u3.getByTestId("availability-calendar"), ymd(60))).getAttribute("aria-label");
+  assert(tone60.includes("booked"), `calendar for Yamaha shows ${ymd(60)} as booked when both units are taken (${tone60})`);
+
   // ---------- pickup reminder (via the 10-minute tick's route) ----------
   sql("update rental_settings set open_time = '00:00', close_time = '23:30'"); // the reminder test books ~1 hour from now, whatever the time
   const cust4 = await (await browser.newContext(phone)).newPage();

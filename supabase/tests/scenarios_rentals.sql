@@ -153,4 +153,16 @@ set role anon;
 select pg_temp.check((book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 600, 610))->>'days')::int = 1, 'and it can be booked again');
 reset role;
 
+-- number of units: 2 × Yamaha can be out at the same time; a third overlapping booking is refused
+update scooters set units = 2 where id = 'a1000000-0000-0000-0000-000000000002';
+select pg_temp.expect_error($q$update scooters set units = 0 where id = 'a1000000-0000-0000-0000-000000000002'$q$, 'scooter_units_range');
+set role anon;
+select pg_temp.check((book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 700, 724))->>'days')::int = 1, 'units: first Yamaha booked');
+select pg_temp.check((select free from scooter_availability(((select t0 from d) + interval '701 hours') at time zone 'Asia/Manila', ((select t0 from d) + interval '702 hours') at time zone 'Asia/Manila') where scooter_id = 'a1000000-0000-0000-0000-000000000002') = 1, 'units: 1 of 2 left while one is booked');
+select pg_temp.check((book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 703, 727))->>'days')::int = 1, 'units: a second overlapping booking fits (2 units)');
+select pg_temp.check((select count(*) from busy_scooters(((select t0 from d) + interval '704 hours') at time zone 'Asia/Manila', ((select t0 from d) + interval '705 hours') at time zone 'Asia/Manila') where busy_scooters = 'a1000000-0000-0000-0000-000000000002') = 1, 'units: shown as booked once both units are taken');
+select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 701, 725))$q$, 'UNAVAILABLE');
+select pg_temp.check((book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 725, 749))->>'days')::int = 1, 'units: once the first is back (+30 min), its unit is free again even though the second is still out');
+reset role;
+
 select 'ALL RENTAL SCENARIOS PASSED';
