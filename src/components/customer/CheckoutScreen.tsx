@@ -134,13 +134,13 @@ export function CheckoutScreen() {
   if (lines.length === 0 && !done) {
     return (
       <div className="min-h-screen">
-        <StoreHeader settings={settings} open={open} back="/" />
+        <StoreHeader settings={settings} open={open} back="/menu" />
         <div className="mx-auto max-w-lg px-4 py-16 text-center">
           <p className="text-5xl" aria-hidden>
             🛒
           </p>
           <h1 className="mt-3 font-display text-2xl font-bold">Your cart is empty</h1>
-          <Link href="/" className="btn-primary mt-6">
+          <Link href="/menu" className="btn-primary mt-6">
             Browse the menu
           </Link>
         </div>
@@ -244,7 +244,7 @@ export function CheckoutScreen() {
 
   return (
     <div className="min-h-screen pb-36">
-      <StoreHeader settings={settings} open={open} back="/" />
+      <StoreHeader settings={settings} open={open} back="/menu" />
       <form onSubmit={submit} noValidate className="mx-auto max-w-2xl space-y-5 px-4 py-5">
         <h1 className="font-display text-2xl font-bold">Checkout</h1>
 
@@ -477,7 +477,7 @@ export function CheckoutScreen() {
         <section className="card p-5" data-error={!!errors.items || !!errors.min}>
           <div className="flex items-center justify-between">
             <h2 className="section-title">Order summary</h2>
-            <Link href="/" className="text-sm font-semibold text-coffee-700 underline underline-offset-2">
+            <Link href="/menu" className="text-sm font-semibold text-coffee-700 underline underline-offset-2">
               + Add more
             </Link>
           </div>

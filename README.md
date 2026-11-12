@@ -16,7 +16,9 @@ More screenshots are in [`docs/screenshots/`](docs/screenshots).
 
 ## What's inside
 
-**Customers** go from menu to order placed in 3 screens:
+**Home** (`/`): customers choose **Order from Pahuway Cafe** (shows whether the café is open and any items already in the cart) or **Rent a scooter from Baybayin** (marked *Coming soon*, not clickable yet).
+
+**Customers** go from menu (`/menu`) to order placed in 3 screens:
 1. **Menu**: categories, photos, prices and "Sold out" badges. Tap an item to choose options (hot/iced, sugar level, milk, add-ons, pizza size) with live price updates. The cart opens as a drawer on the same screen.
 2. **Checkout** (one page): pickup, delivery or dine-in; ASAP or a 15-minute time slot; name and mobile number. Delivery adds a barangay (the fee applies automatically), street/purok, landmark, notes to the rider and an optional **map pin** (tap the map or "Use my current location"). With a Google Maps key the address and map stay in sync: Google address suggestions move the pin, the barangay centres the map, and moving the pin fills in empty fields. See [docs/MAPS.md](docs/MAPS.md). Without a key it uses OpenStreetMap. Payment is cash, or GCash (QR code + reference number + screenshot upload).
 3. **Confirmation & live status**: order number (e.g. `PH-0001`), a live progress timeline, and a shareable link.
@@ -135,7 +137,7 @@ supabase/
   seed.sql                     sample menu, options, zones, settings
   tests/                       database scenario tests (+ stubs for plain Postgres)
 src/
-  app/                         routes: / · /checkout · /order/[token] · /account · /login · /welcome · /admin/* · /rider · /api/admin/team
+  app/                         routes: / (home) · /menu · /checkout · /order/[token] · /account · /login · /welcome · /admin/* · /rider · /api/admin/team
   components/customer/         menu, item sheet, cart, checkout, status page
   components/admin/            orders board, order detail, menu/options/zones/settings/summary
   lib/                         Supabase clients, cart, opening hours & time slots, formatting, sound

@@ -26,7 +26,7 @@ const assert = (c, m) => {
   const admin = await (await browser.newContext({ ...devices["iPad (gen 7) landscape"] })).newPage();
   admin.on("dialog", (d) => d.accept());
   const cust = await (await browser.newContext({ ...devices["iPhone 13"] })).newPage();
-  await cust.goto(BASE + "/");
+  await cust.goto(BASE + "/menu");
   const custAmericano = cust.locator("article", { hasText: "Double espresso over hot water" });
   await custAmericano.waitFor();
 

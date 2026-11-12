@@ -48,7 +48,7 @@ const assert = (c, m) => {
 
   // 2. customer pays online
   const cust = await (await browser.newContext({ ...devices["iPhone 13"] })).newPage();
-  await cust.goto(BASE + "/");
+  await cust.goto(BASE + "/menu");
   await cust.locator("article", { hasText: "Café Latte" }).getByRole("button", { name: "Add Café Latte" }).click();
   await cust.getByLabel("Iced").check();
   await cust.getByRole("button", { name: /^Add · / }).click();
@@ -99,7 +99,7 @@ const assert = (c, m) => {
   await admin.keyboard.press("Escape");
 
   // 4. abandoned checkout → resume later with the same session
-  await cust.goto(BASE + "/");
+  await cust.goto(BASE + "/menu");
   await cust.locator("article", { hasText: "Ensaymada" }).getByRole("button", { name: "Add Ensaymada" }).click();
   await cust.getByRole("button", { name: /^Add · / }).click();
   await cust.getByRole("button", { name: /View cart/ }).click();
@@ -136,7 +136,7 @@ const assert = (c, m) => {
   await admin.getByText("Settings saved.").waitFor();
   await cust.goto(BASE + "/checkout");
   await cust.getByRole("radio", { name: /Cash on pickup/ }).waitFor().catch(() => {});
-  await cust.goto(BASE + "/");
+  await cust.goto(BASE + "/menu");
   await cust.locator("article", { hasText: "Ensaymada" }).getByRole("button", { name: "Add Ensaymada" }).click();
   await cust.getByRole("button", { name: /^Add · / }).click();
   await cust.getByRole("button", { name: /View cart/ }).click();
