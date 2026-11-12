@@ -38,6 +38,15 @@ delivery_zones 1─* orders ─1 (customer_id → users, rider_id → riders)
 
 Payment status: `unpaid` (cash) · `for_verification` (manual GCash screenshot uploaded) · `awaiting_payment` (online, not paid yet — hidden from staff) · `paid` · `refunded`. Payment methods: `cash`, `gcash` (manual), `online` (HitPay: GCash/QR Ph). See [PAYMENTS.md](PAYMENTS.md) for `mark_order_paid()` and the 30-minute auto-cancel job.
 
+### Baybayin scooter rentals
+| Table | What it holds | Who can read / write |
+|---|---|---|
+| **rental_settings** | One row: Accept bookings switch, deposit %, delivery fee, security deposit (+ note), pickup note, longest rental. | Everyone reads · `rentals` writes |
+| **scooters** | Name, description, daily rate, photo, shown/hidden, order. | Everyone reads shown scooters · `rentals` writes |
+| **rental_bookings** | `BY-0001` number, secret link token, scooter (+ name copy), customer, pickup/return dates, days, rate, helmets, delivery + address + fee, total, online deposit, security deposit, private license photo path, notes, status (`awaiting_deposit → confirmed → picked_up → returned`, or `cancelled` with a reason), payment status, HitPay refs, timestamps. A database rule (`no_double_booking`) prevents overlapping bookings per scooter. | `rentals` staff read/update · created only by `book_scooter()` |
+
+Functions: `book_scooter(p)` (validates + prices on the server), `scooter_bookings_between(from, to)` (taken days, no personal data), `get_booking_by_token(token)`, `mark_booking_paid()` (server only), `expire_unpaid_bookings()` (every 5 min). Bucket **license-photos** is private (customers upload, only `rentals` staff view). See [RENTALS.md](RENTALS.md).
+
 ## Database functions (RPC)
 
 | Function | Who | What it does |

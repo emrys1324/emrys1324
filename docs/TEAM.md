@@ -20,6 +20,7 @@ Admin → **Settings → Team** (full admins only) is where you add everyone who
    | Refunds | refund paid online orders |
    | Sales summary | see daily sales and top items |
    | Store settings | hours, branding, GCash, online payments |
+   | Scooter rentals | Baybayin bookings, scooters and rental settings (see RENTALS.md) |
 
    **Barista preset** = Orders board + Sold-out switches + Open/close. **Supervisor preset** adds Menu, Refunds and Sales.
 4. **Send invite** — they get an email, tap the link, set their own password and land on their first page.

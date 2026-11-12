@@ -10,6 +10,7 @@ export const PERMISSIONS = [
   { key: "refunds", label: "Refunds", hint: "Refund paid online orders" },
   { key: "sales", label: "Sales summary", hint: "Daily sales, top items" },
   { key: "settings", label: "Store settings", hint: "Hours, branding, GCash, online payments" },
+  { key: "rentals", label: "Scooter rentals", hint: "Baybayin bookings, scooters and rental settings" },
 ] as const;
 
 export type Perm = (typeof PERMISSIONS)[number]["key"];
@@ -24,6 +25,7 @@ export const STAFF_PAGES: { href: string; label: string; perms: Perm[] }[] = [
   { href: "/admin/options", label: "Options", perms: ["menu"] },
   { href: "/admin/zones", label: "Zones", perms: ["zones"] },
   { href: "/admin/summary", label: "Summary", perms: ["sales"] },
+  { href: "/admin/rentals", label: "Rentals", perms: ["rentals"] },
   { href: "/admin/settings", label: "Settings", perms: ["settings"] },
 ];
 
