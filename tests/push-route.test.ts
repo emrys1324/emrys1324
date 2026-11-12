@@ -77,8 +77,8 @@ const assert = (cond: unknown, msg: string) => {
   const call = (body: object, secret = "s3cret-for-tests") =>
     POST(new Request("http://x/api/push/order-event", { method: "POST", headers: { "x-push-secret": secret }, body: JSON.stringify(body) }));
 
-  const { data: admin } = await db.from("users").select("id").eq("role", "admin").single();
-  const { data: rider } = await db.from("riders").select("id, user_id").single();
+  const { data: admin } = await db.from("users").select("id").eq("role", "admin").eq("email", process.env.SEED_ADMIN_EMAIL || "admin@pahuway.cafe").single();
+  const { data: rider } = await db.from("riders").select("id, user_id").eq("is_active", true).not("user_id", "is", null).order("name").limit(1).single();
   await db.from("push_tokens").insert([
     { token: "admin-tablet-token-000000000000", platform: "android", user_id: admin!.id },
     { token: "dead-admin-phone-token-00000000", platform: "android", user_id: admin!.id },

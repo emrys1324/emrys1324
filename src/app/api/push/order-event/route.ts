@@ -55,11 +55,13 @@ export async function POST(req: Request) {
   const peso = `₱${Number(order.total).toLocaleString("en-PH")}`;
   const type = order.order_type === "dine_in" ? "Dine-in" : order.order_type === "delivery" ? "Delivery" : "Pickup";
 
-  // 1. New order → every admin device
+  // 1. New order → devices of active admins and staff with the Orders permission
   if (evt.new_order) {
-    const { data } = await db.from("push_tokens").select("token, platform, users!inner(role, is_active)").in("users.role", ["admin", "staff"]).eq("users.is_active", true);
+    const { data } = await db.from("push_tokens").select("token, platform, users!inner(role, is_active, permissions)").in("users.role", ["admin", "staff"]).eq("users.is_active", true);
+    type Row = { token: string; platform: string; users: { role: string; permissions: string[] | null } | { role: string; permissions: string[] | null }[] };
+    const onBoard = (r: Row) => [r.users].flat().some((u) => u.role === "admin" || (u.permissions ?? []).includes("orders"));
     jobs.push({
-      devices: (data ?? []).map((r) => ({ token: r.token, platform: r.platform })),
+      devices: ((data ?? []) as Row[]).filter(onBoard).map((r) => ({ token: r.token, platform: r.platform })),
       msg: { title: `🔔 New order ${order.order_number}`, body: `${type} · ${peso} · ${order.customer_name}`, url: "/admin", urgent: true },
     });
   }

@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   const session = await getSessionRole();
-  if (!session || session.role !== "admin") return NextResponse.json({ error: "Admins only" }, { status: 403 });
+  if (!session || !session.perms.includes("refunds")) return NextResponse.json({ error: "You don't have permission to refund." }, { status: 403 });
   const db = getAdminSupabase();
   if (!db) return NextResponse.json({ error: "Server not configured" }, { status: 500 });
 

@@ -28,10 +28,10 @@ There's also an optional **account** (`/account`) that saves the customer's addr
 - **Menu**: items, categories and photos, with a one-tap **Sold out** switch.
 - **Options**: choice groups and extra prices (e.g. turn off "Oat milk" when it runs out).
 - **Zones**: barangays, fees and on/off switches.
-- **Settings**: **branding** (logo, background photo with fade, store name, staff header title, and customer/staff header colours with automatically readable text — updates live everywhere), open/closed switch (also in the header), hours, delivery minimum, prep time, GCash QR, and a **Riders** section to create rider logins.
+- **Settings**: **branding** (logo, background photo with fade, store name, staff header title, and customer/staff header colours with automatically readable text — updates live everywhere), open/closed switch (also in the header), hours, delivery minimum, prep time, GCash QR, and the **Team** section (staff, admins and riders).
 - **Summary**: orders, sales, average order, top 5 items, and sales by order type and payment method, for any day.
-- **Staff** (admins only): add team logins with **Orders only** access (orders board + Sold-out switches; no prices, zones, settings, refunds or sales) or **Full admin** access. Change someone's access, switch a login off/on (they're locked out at once, order history kept), reset a password, or delete a login. An admin can't lock themselves out, and the last active admin can't be removed.
-- **Sold out**: one page of switches for items and options (e.g. oat milk) — available to every staff member.
+- **Team** (in Settings, full admins only): **invite** staff, admins and riders **by email** (or copy an invite link to send by Messenger/SMS) — they set their own password. Give each staff member exactly what they need with tick boxes: Orders board, Sold-out switches, Open/close the store, Menu & options, Delivery zones, Refunds, Sales summary, Store settings (Barista / Supervisor presets). Edit permissions anytime, send a password-reset link or email, **switch a login off** (locked out at once, history kept) or delete it. Admins can't lock themselves out; the last active admin can't be removed. See [docs/TEAM.md](docs/TEAM.md).
+- **Sold out**: one page of switches for items and options (e.g. oat milk), for anyone with the Sold-out or Menu permission. Staff only see the pages their permissions allow.
 
 **Riders** (`/rider`): only *their* assigned deliveries, with tap-to-call, address, landmark, a **map preview of the customer's pin with Google Maps and Waze buttons** (falls back to the typed address when there's no pin) and the **amount to collect**, plus big **Picked up** and **Delivered** buttons.
 
@@ -122,7 +122,7 @@ Open http://localhost:3000. Staff and riders sign in at http://localhost:3000/lo
 | Branding (21 checks) | `npm run test:branding` | Logo, background, store name, staff title and header colours: live updates, measured text contrast, staff screens stay plain, reset to defaults. |
 | Delivery map pin (23 checks) | `npm run test:maps` | Pin by tap / current location / remove, saved on the order + account, guest pin remembered, server rejects pins outside the Philippines, rider Google Maps/Waze links + no-pin fallback, staff pin link. |
 | Google Maps mode (26 checks) | `npm run test:google-maps` | Address suggestions → pin, barangay → map, pin → fills empty fields, never overwrites, rider/staff previews, fallback to OpenStreetMap if Google rejects the key. Uses a Google Maps stand-in; start the app with `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=test-key`. |
-| Staff logins (26 checks) | `npm run test:staff` | Add staff (validation, duplicate email), Orders-only limits (pages, APIs, store switch), Sold out page, change access, reset password, switch off/on (open session locked out), self-protection, delete. |
+| Team & permissions (27 checks) | `npm run test:team` | Needs the local email catcher (`npx supabase start`, mailpit on :54324). Invite by email (real email → /welcome → set password) and by link (rider), per-person permissions (pages, APIs, open/close), editing permissions, password-reset link + email, links work once, switch off/on, self-protection, delete keeps delivery history. |
 | End-to-end acceptance test | `npm run test:e2e` | Needs local Supabase + `seed:users` + the app on :3000, plus Playwright (`npm i -D playwright && npx playwright install chromium`). Drives a customer phone, staff tablet and rider phone at once and re-creates the screenshots. |
 
 The end-to-end test covers every acceptance criterion: a guest orders a customised iced latte for delivery and pays by GCash screenshot. Staff see it instantly with a chime, verify payment, accept, assign the rider and mark it ready, and the customer's page updates live at each step. The rider sees only their order and marks it picked up, then delivered. Marking Americano sold out removes its Add button on the customer's phone at once. Closing the store blocks ordering with a friendly message.
@@ -135,7 +135,7 @@ supabase/
   seed.sql                     sample menu, options, zones, settings
   tests/                       database scenario tests (+ stubs for plain Postgres)
 src/
-  app/                         routes: / · /checkout · /order/[token] · /account · /login · /admin/* · /rider · /api/admin/riders
+  app/                         routes: / · /checkout · /order/[token] · /account · /login · /welcome · /admin/* · /rider · /api/admin/team
   components/customer/         menu, item sheet, cart, checkout, status page
   components/admin/            orders board, order detail, menu/options/zones/settings/summary
   lib/                         Supabase clients, cart, opening hours & time slots, formatting, sound
@@ -152,4 +152,4 @@ docs/                          SCHEMA.md, PHASE2.md, screenshots
 - **Phone validation** accepts `09XXXXXXXXX`, `+639…` or `639…` (spaces and dashes are fine) and stores everything as `09XXXXXXXXX`.
 - **Cash orders** are marked paid automatically when completed or delivered.
 
-Further reading: [Delivery map](docs/MAPS.md) · [Database schema](docs/SCHEMA.md) · [Phase 2 roadmap](docs/PHASE2.md)
+Further reading: [Team & permissions](docs/TEAM.md) · [Delivery map](docs/MAPS.md) · [Database schema](docs/SCHEMA.md) · [Phase 2 roadmap](docs/PHASE2.md)

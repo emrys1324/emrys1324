@@ -125,7 +125,7 @@ Apple sometimes rejects apps that are "just a website" (guideline 4.2). Isla is 
 
 > Isla is the ordering app for Pahuway Cafe, a café in San Agustin, Romblon, Philippines. Customers can browse and order without an account (cash payment is fine for testing — the café will cancel test orders). After ordering, tap "Notify me" to receive native push notifications as the order is prepared and delivered. The staff and rider areas (/login) are for café employees; demo rider credentials are provided below.
 
-Create a **demo rider** for Apple (Admin → Settings → Riders, e.g. `review@pahuway.cafe`) — never give reviewers the admin login. Expect a review question or two; reply in App Store Connect and resubmit (usually within a day).
+Create a **demo rider** for Apple (Admin → Settings → Team → invite as Rider, e.g. `review@pahuway.cafe`) — never give reviewers the admin login. Expect a review question or two; reply in App Store Connect and resubmit (usually within a day).
 
 Other notes:
 - Ordering hours apply in the app too — submit for review while the store is open, or mention the hours in the notes.

@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { ALL_PERMS, firstStaffPage, isPerm, type Perm } from "@/lib/permissions";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
@@ -21,31 +22,40 @@ export async function getServerSupabase() {
 
 export type Role = "customer" | "admin" | "staff" | "rider";
 
-/** Returns the signed-in user and their role, or null. */
-export async function getSessionRole(): Promise<{ id: string; email?: string; role: Role } | null> {
+export interface Session {
+  id: string;
+  email?: string;
+  role: Role;
+  /** effective permissions: every permission for admins, the ticked ones for staff */
+  perms: Perm[];
+}
+
+/** Returns the signed-in user, their role and permissions, or null. A switched-off login has no rights. */
+export async function getSessionRole(): Promise<Session | null> {
   const supabase = await getServerSupabase();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return null;
-  const res = await supabase.from("users").select("role, is_active").eq("id", user.id).single();
-  let data: { role: string; is_active?: boolean } | null = res.data;
-  if (res.error && /is_active/.test(res.error.message)) {
+  const res = await supabase.from("users").select("role, is_active, permissions").eq("id", user.id).single();
+  let data: { role: string; is_active?: boolean; permissions?: string[] } | null = res.data;
+  if (res.error && /is_active|permissions/.test(res.error.message)) {
     // database not migrated yet (0008) — keep admins working
     data = (await supabase.from("users").select("role").eq("id", user.id).single()).data;
   }
-  // a deactivated login gets no staff/admin/rider rights
-  const role = data && data.is_active !== false ? ((data.role as Role) ?? "customer") : "customer";
-  return { id: user.id, email: user.email, role };
+  if (!data || data.is_active === false) return { id: user.id, email: user.email, role: "customer", perms: [] };
+  const role = (data.role as Role) ?? "customer";
+  const perms = role === "admin" ? ALL_PERMS : role === "staff" ? (data.permissions ?? []).filter(isPerm) : [];
+  return { id: user.id, email: user.email, role, perms };
 }
 
-/** Staff area access: full admins and "Orders only" staff. */
-export const isStaffRole = (r: Role | undefined) => r === "admin" || r === "staff";
-
-/** For admin-only pages: staff are sent back to the orders board. */
-export async function requireAdminPage() {
+/** For a staff page: needs one of `perms`; otherwise goes to a page they may use (or sign-in). */
+export async function requirePerm(...perms: Perm[]): Promise<Session> {
   const session = await getSessionRole();
   if (!session) redirect("/login?next=/admin");
-  if (session.role !== "admin") redirect("/admin?admin_only=1");
+  if (!perms.some((p) => session.perms.includes(p))) {
+    const home = firstStaffPage(session.perms);
+    redirect(home ? `${home}?not_allowed=1` : "/login?denied=1");
+  }
   return session;
 }

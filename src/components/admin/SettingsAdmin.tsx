@@ -6,9 +6,12 @@ import { uploadPublicImage } from "@/lib/upload";
 import { DEFAULT_LOGO, useStoreSettings } from "@/lib/store-settings";
 import { BackgroundLayer } from "@/components/BrandBackground";
 import { DEFAULT_STAFF_HEADER, headerTheme, isHex } from "@/lib/color";
-import type { Rider, StoreSettings } from "@/lib/types";
+import type { StoreSettings } from "@/lib/types";
+import { TeamSection } from "./TeamAdmin";
+import { useStaffAccess } from "./StaffAccess";
 
 export function SettingsAdmin() {
+  const { isAdmin } = useStaffAccess();
   const { setLocal } = useStoreSettings();
   const [s, setS] = useState<StoreSettings | null>(null);
   const [msg, setMsg] = useState<{ tone: "red" | "green"; text: string } | null>(null);
@@ -185,74 +188,8 @@ export function SettingsAdmin() {
         </button>
       </form>
 
-      <RidersSection />
+      {isAdmin && <TeamSection />}
     </div>
-  );
-}
-
-function RidersSection() {
-  const [riders, setRiders] = useState<Rider[]>([]);
-  const [form, setForm] = useState({ name: "", phone: "", email: "", password: "" });
-  const [busy, setBusy] = useState(false);
-  const [msg, setMsg] = useState<{ tone: "red" | "green"; text: string } | null>(null);
-
-  const load = useCallback(async () => {
-    const { data } = await getSupabase().from("riders").select("*").order("name");
-    setRiders((data as Rider[]) ?? []);
-  }, []);
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  const patch = async (id: string, p: Partial<Rider>) => {
-    const { error } = await getSupabase().from("riders").update(p).eq("id", id);
-    if (error) setMsg({ tone: "red", text: error.message });
-    load();
-  };
-
-  const add = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setBusy(true);
-    setMsg(null);
-    const res = await fetch("/api/admin/riders", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
-    const json = await res.json().catch(() => ({}));
-    setBusy(false);
-    if (!res.ok) return setMsg({ tone: "red", text: json.error ?? "Could not add rider." });
-    setMsg({ tone: "green", text: `${form.name} can now sign in at /login with ${form.email}.` });
-    setForm({ name: "", phone: "", email: "", password: "" });
-    load();
-  };
-
-  return (
-    <section className="card space-y-4 p-5">
-      <div>
-        <h2 className="section-title">Riders</h2>
-        <p className="text-sm text-coffee-700">Riders sign in at <span className="font-mono">/login</span> and only see deliveries assigned to them.</p>
-      </div>
-      {msg && <Alert tone={msg.tone}>{msg.text}</Alert>}
-      <ul className="divide-y divide-coffee-100">
-        {riders.map((r) => (
-          <li key={r.id} className="flex items-center gap-2 py-2">
-            <input className="input flex-1" defaultValue={r.name} aria-label="Rider name" onBlur={(e) => e.target.value.trim() && e.target.value !== r.name && patch(r.id, { name: e.target.value.trim() })} />
-            <input className="input w-40" defaultValue={r.phone ?? ""} aria-label="Rider mobile" onBlur={(e) => e.target.value !== (r.phone ?? "") && patch(r.id, { phone: e.target.value || null })} />
-            <Toggle checked={r.is_active} onChange={(v) => patch(r.id, { is_active: v })} label={`${r.name} active`} />
-          </li>
-        ))}
-        {riders.length === 0 && <li className="py-3 text-coffee-600">No riders yet.</li>}
-      </ul>
-      <form onSubmit={add} className="space-y-3 rounded-2xl bg-cream p-4">
-        <p className="font-bold">Add a rider</p>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <input className="input" placeholder="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} aria-label="Name" />
-          <input className="input" placeholder="Mobile 09XXXXXXXXX" inputMode="numeric" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} aria-label="Mobile" />
-          <input className="input" placeholder="Login email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} aria-label="Login email" />
-          <input className="input" placeholder="Password (8+ characters)" type="text" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} aria-label="Password" />
-        </div>
-        <button className="btn-primary w-full" disabled={busy}>
-          {busy ? <Spinner /> : "Create rider login"}
-        </button>
-      </form>
-    </section>
   );
 }
 
