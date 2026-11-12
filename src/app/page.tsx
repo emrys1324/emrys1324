@@ -1,5 +1,5 @@
-import { MenuScreen } from "@/components/customer/MenuScreen";
+import { HomeChooser } from "@/components/customer/HomeChooser";
 
 export default function Home() {
-  return <MenuScreen />;
+  return <HomeChooser />;
 }

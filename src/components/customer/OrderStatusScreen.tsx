@@ -140,7 +140,7 @@ function Inner({ token }: { token: string }) {
         <Logo />
         <h1 className="mt-8 font-display text-2xl font-bold">Order not found</h1>
         <p className="mt-2 text-coffee-700">Please check the link, or call the café.</p>
-        <Link href="/" className="btn-primary mt-6">
+        <Link href="/menu" className="btn-primary mt-6">
           Back to menu
         </Link>
       </div>
@@ -332,7 +332,7 @@ function Inner({ token }: { token: string }) {
           )}
         </section>
 
-        <Link href="/" className="btn-secondary w-full">
+        <Link href="/menu" className="btn-secondary w-full">
           Back to menu
         </Link>
       </main>
@@ -398,7 +398,7 @@ function OnlinePaymentCard({ token, total, expiresAt, confirming }: { token: str
           <p className="text-base font-bold">The payment window has closed.</p>
           <p className="font-normal">This order wasn&apos;t paid within 30 minutes, so it won&apos;t be prepared. Please place a new order.</p>
         </Alert>
-        <Link href="/" className="btn-primary mt-3 w-full">
+        <Link href="/menu" className="btn-primary mt-3 w-full">
           Back to menu
         </Link>
       </div>

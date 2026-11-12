@@ -27,7 +27,7 @@ async function newPhone(browser, { authFail = false } = {}) {
   return ctx.newPage();
 }
 async function toCheckout(page) {
-  await page.goto(BASE + "/");
+  await page.goto(BASE + "/menu");
   await page.locator("article", { hasText: "Double espresso over hot water" }).getByRole("button", { name: /^Add/ }).click();
   await page.getByRole("button", { name: "Increase quantity" }).click();
   await page.getByRole("button", { name: /^Add · / }).click();

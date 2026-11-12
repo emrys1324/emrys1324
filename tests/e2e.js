@@ -36,7 +36,18 @@ const t0 = Date.now();
   // ---------- Guest on a phone ----------
   const custCtx = await browser.newContext({ ...devices["iPhone 13"] });
   const cust = await custCtx.newPage(); global.cust = cust;
+  // home: choose the café or the (coming soon) scooter rental
   await cust.goto(BASE + "/");
+  await cust.getByRole("heading", { name: "Welcome!" }).waitFor();
+  const scooter = cust.getByTestId("choose-scooter");
+  if ((await scooter.getAttribute("aria-disabled")) !== "true" || !(await scooter.getByText("Coming soon").isVisible())) throw new Error("Scooter rental should show Coming soon and not be clickable");
+  await cust.getByTestId("choose-cafe").getByText(/Open now · until/).waitFor();
+  await cust.screenshot({ path: SHOTS + "0-home.png" });
+  await scooter.click({ force: true });
+  if (cust.url() !== BASE + "/") throw new Error("Coming-soon card must not navigate");
+  await cust.getByTestId("choose-cafe").click();
+  await cust.waitForURL(BASE + "/menu");
+  log("home: café card (open now) → menu; scooter rental shows Coming soon and isn't clickable");
   await cust.getByRole("heading", { name: "Coffee", exact: true }).waitFor();
   await cust.screenshot({ path: SHOTS + "1-menu.png" });
   // sold-out item has no Add button
@@ -145,7 +156,7 @@ const t0 = Date.now();
   await admin.getByText(/Completed & cancelled today \(1\)/).waitFor({ timeout: 8000 });
 
   // ---------- Sold-out toggle hides Add immediately ----------
-  await cust.goto(BASE + "/");
+  await cust.goto(BASE + "/menu");
   const americano = cust.locator("article", { hasText: "Americano" });
   await americano.getByRole("button", { name: "Add Americano" }).waitFor();
   await admin.goto(BASE + "/admin/menu");

@@ -18,7 +18,7 @@ const HERE = { latitude: 12.570123, longitude: 122.133456 }; // a spot in San Ag
 const CUSTOMER = { email: "maptest@example.com", password: "MapTest-2026!" };
 
 async function addAmericanoAndCheckout(page) {
-  await page.goto(BASE + "/");
+  await page.goto(BASE + "/menu");
   await page.locator("article", { hasText: "Double espresso over hot water" }).getByRole("button", { name: /^Add/ }).click();
   await page.getByRole("button", { name: "Increase quantity" }).click(); // 2 × ₱120 clears the ₱200 delivery minimum
   await page.getByRole("button", { name: /^Add · / }).click();

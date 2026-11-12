@@ -17,7 +17,7 @@ const assert = (c, m) => {
   const cust = await (await browser.newContext({ ...devices["iPhone 13"] })).newPage();
 
   // customer has the menu open before any change
-  await cust.goto(BASE + "/");
+  await cust.goto(BASE + "/menu");
   await cust.getByRole("heading", { name: "Coffee", exact: true }).waitFor();
   assert((await cust.locator("header img").first().getAttribute("src")) === "/logo.svg", "default logo shown initially");
   assert((await cust.getByTestId("brand-background").count()) === 0, "no background initially");
@@ -102,7 +102,7 @@ const assert = (c, m) => {
   assert(ratio(sBg, tabFg) >= 4.5, `staff nav links readable on light header (${ratio(sBg, tabFg).toFixed(1)}:1)`);
   await admin.screenshot({ path: SHOTS + "16-staff-header-custom.png" });
 
-  await cust.goto(BASE + "/");
+  await cust.goto(BASE + "/menu");
   await cust.waitForFunction(() => document.querySelector("[data-testid=store-title]")?.textContent?.trim() === "Isla Café", null, { timeout: 8000 });
   await cust.waitForTimeout(400); // let the buttons' 150 ms colour transition finish
   const cBg = await cust.getByTestId("customer-header").evaluate((el) => getComputedStyle(el).backgroundColor);
@@ -128,7 +128,7 @@ const assert = (c, m) => {
   await admin.getByRole("button", { name: "Remove background" }).click();
   await admin.getByRole("button", { name: "Save settings" }).click();
   await admin.getByText("Settings saved.").waitFor();
-  await cust.goto(BASE + "/");
+  await cust.goto(BASE + "/menu");
   await cust.getByRole("heading", { name: "Coffee", exact: true }).waitFor();
   assert((await cust.locator("header img").first().getAttribute("src")) === "/logo.svg" && (await cust.getByTestId("brand-background").count()) === 0, "defaults restored");
   assert((await cust.getByTestId("store-title").textContent()).trim() === "Pahuway Cafe", "store name restored");

@@ -105,7 +105,7 @@ const calls = (p) => p.evaluate(() => window.__nativeCalls);
 
   // 2. Customer, Firebase build: "Notify me" on the order page subscribes this phone to the order
   const cust = await appPage(browser, { pushEnabled: true, token: "fcm-guest-phone-token-1234567890" });
-  await cust.goto(BASE + "/");
+  await cust.goto(BASE + "/menu");
   await cust.locator("article", { hasText: "Ensaymada" }).getByRole("button", { name: "Add Ensaymada" }).click();
   await cust.getByRole("button", { name: /^Add · / }).click();
   await cust.getByRole("button", { name: /View cart/ }).click();
