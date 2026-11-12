@@ -36,3 +36,10 @@ end $$;
 alter table public.rental_bookings drop constraint if exists rental_times_order;
 alter table public.rental_bookings add constraint rental_times_order
   check (return_at > pickup_at and blocked_until > pickup_at and (blocked_until >= return_at or status = 'returned'));
+
+-- free scooters of bookings that were already marked returned before this change
+alter table public.rental_bookings disable trigger rental_bookings_touch;
+update public.rental_bookings
+   set blocked_until = greatest(least(blocked_until, coalesce(returned_at, now())), pickup_at + interval '1 minute')
+ where status = 'returned' and blocked_until > greatest(coalesce(returned_at, now()), pickup_at + interval '1 minute');
+alter table public.rental_bookings enable trigger rental_bookings_touch;
