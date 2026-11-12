@@ -6,7 +6,7 @@ import { getAuthedSupabase, getSupabase } from "@/lib/supabase/client";
 import { formatPeso } from "@/lib/format";
 import { formatDateTime } from "@/lib/hours";
 import { uploadPublicImage } from "@/lib/upload";
-import { BOOKING_STATUS_LABEL, PAYMENT_LABEL, manilaDate, prettyDate, type BookingStatus, type RentalSettings, type Scooter } from "@/lib/rentals";
+import { BOOKING_STATUS_LABEL, PAYMENT_LABEL, manilaDate, manilaDateOf, prettyDateTime, prettyTime, type BookingStatus, type RentalSettings, type Scooter } from "@/lib/rentals";
 import { useStaffAccess } from "./StaffAccess";
 
 interface Booking {
@@ -19,6 +19,8 @@ interface Booking {
   customer_email: string | null;
   start_date: string;
   end_date: string;
+  pickup_at: string;
+  return_at: string;
   days: number;
   daily_rate: number;
   helmets: number;
@@ -70,7 +72,7 @@ function BookingsTab() {
   const [openId, setOpenId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    const { data } = await getSupabase().from("rental_bookings").select("*").order("start_date").order("created_at");
+    const { data } = await getSupabase().from("rental_bookings").select("*").order("pickup_at").order("created_at");
     setList((data as Booking[]) ?? []);
   }, []);
   useEffect(() => {
@@ -86,6 +88,7 @@ function BookingsTab() {
 
   const now = Date.now();
   const expired = (b: Booking) => b.status === "awaiting_deposit" && !!b.payment_expires_at && new Date(b.payment_expires_at).getTime() < now;
+  const overdue = (b: Booking) => b.status === "picked_up" && new Date(b.return_at).getTime() < now;
   const shown = useMemo(
     () =>
       (list ?? []).filter((b) =>
@@ -131,11 +134,12 @@ function BookingsTab() {
                   {b.customer_name} · {b.scooter_name}
                 </span>
                 <span className="block text-sm text-coffee-700">
-                  {prettyDate(b.start_date)} → {prettyDate(b.end_date)} · {b.days}d{b.delivery ? " · delivery" : ""}
-                  {b.start_date === today && b.status === "confirmed" && <strong className="text-sage-700"> · pickup today</strong>}
-                  {b.end_date === today && b.status === "picked_up" && <strong className="text-amber-800"> · due back today</strong>}
+                  {prettyDateTime(b.pickup_at)} → {prettyDateTime(b.return_at)} · {b.days}d{b.delivery ? " · delivery" : ""}
+                  {manilaDateOf(b.pickup_at) === today && b.status === "confirmed" && <strong className="text-sage-700"> · pickup today at {prettyTime(b.pickup_at)}</strong>}
+                  {manilaDateOf(b.return_at) === today && b.status === "picked_up" && !overdue(b) && <strong className="text-amber-800"> · due back today at {prettyTime(b.return_at)}</strong>}
                 </span>
               </span>
+              {overdue(b) && <Badge tone="red">Overdue</Badge>}
               <Badge tone={b.status === "cancelled" || expired(b) ? "red" : b.status === "awaiting_deposit" ? "amber" : b.status === "picked_up" ? "blue" : "green"}>
                 {expired(b) ? "Expired" : BOOKING_STATUS_LABEL[b.status]}
               </Badge>
@@ -212,8 +216,11 @@ function BookingSheet({ booking: b, onClose, onChanged }: { booking: Booking | n
             <p>
               <strong>{b.scooter_name}</strong> · {b.helmets} helmet{b.helmets === 1 ? "" : "s"}
             </p>
-            <p>
-              {prettyDate(b.start_date)} → {prettyDate(b.end_date)} ({b.days} day{b.days === 1 ? "" : "s"})
+            <p data-testid="booking-sheet-times">
+              Pickup <strong>{prettyDateTime(b.pickup_at)}</strong>
+              <br />
+              Return by <strong>{prettyDateTime(b.return_at)}</strong> ({b.days} day{b.days === 1 ? "" : "s"})
+              {b.status === "picked_up" && new Date(b.return_at).getTime() < Date.now() && <strong className="text-red-700"> · overdue</strong>}
             </p>
             <p>{b.delivery ? <>Deliver to: <strong>{b.delivery_address}</strong></> : "Customer picks up"}</p>
             {b.notes && <p className="rounded-xl bg-amber-50 px-3 py-2 text-amber-900">Note: {b.notes}</p>}
@@ -440,6 +447,8 @@ function SettingsTab() {
         delivery_fee: Math.max(0, Number(s.delivery_fee) || 0),
         pickup_note: s.pickup_note?.trim() || null,
         max_days: Math.min(90, Math.max(1, Number(s.max_days) || 30)),
+        grace_minutes: Math.min(240, Math.max(0, Number(s.grace_minutes) || 0)),
+        turnaround_minutes: Math.min(240, Math.max(0, Number(s.turnaround_minutes) || 0)),
       })
       .eq("id", 1);
     setBusy(false);
@@ -479,6 +488,22 @@ function SettingsTab() {
             Longest rental (days)
           </label>
           <input id="max-days" className="input" inputMode="numeric" {...num("max_days")} />
+        </div>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div>
+          <label className="label" htmlFor="grace-minutes">
+            Late-return grace (minutes)
+          </label>
+          <input id="grace-minutes" className="input" inputMode="numeric" {...num("grace_minutes")} />
+          <p className="hint">Rentals are charged per 24 hours; returning up to this late doesn&apos;t add a day. 0–240.</p>
+        </div>
+        <div>
+          <label className="label" htmlFor="turnaround-minutes">
+            Time between bookings (minutes)
+          </label>
+          <input id="turnaround-minutes" className="input" inputMode="numeric" {...num("turnaround_minutes")} />
+          <p className="hint">Gap after each return before the same scooter can be picked up again (handover, checking, fuel). 0–240.</p>
         </div>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">

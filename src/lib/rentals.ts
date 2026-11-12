@@ -11,6 +11,8 @@ export interface RentalSettings {
   delivery_fee: number;
   pickup_note: string | null;
   max_days: number;
+  grace_minutes: number;
+  turnaround_minutes: number;
 }
 export interface Scooter {
   id: string;
@@ -86,3 +88,35 @@ export function getRecentBooking(): { token: string; number: string } | null {
     return null;
   }
 }
+
+// ---- pickup / return times (Manila, 30-minute steps; days = 24-hour blocks with a grace period)
+export const TIME_SLOTS: string[] = Array.from({ length: 48 }, (_, i) => `${String(Math.floor(i / 2)).padStart(2, "0")}:${i % 2 ? "30" : "00"}`);
+export function slotLabel(hhmm: string): string {
+  const [h, m] = hhmm.split(":").map(Number);
+  return `${h % 12 || 12}:${String(m).padStart(2, "0")} ${h < 12 ? "AM" : "PM"}`;
+}
+/** Epoch ms of a Manila local date + time. */
+export const manilaInstant = (ymd: string, hhmm: string) => Date.parse(`${ymd}T${hhmm}:00+08:00`);
+/** Next bookable slot: at least 30 min from now, rounded up to :00/:30 (tomorrow 9:00 AM if it's late). */
+export function nextPickupSlot(): { date: string; time: string } {
+  const t = Date.now() + 30 * 60_000;
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(t));
+  const get = (k: string) => parts.find((p) => p.type === k)!.value;
+  let mins = Number(get("hour")) * 60 + Number(get("minute"));
+  mins = Math.ceil(mins / 30) * 30;
+  const date = `${get("year")}-${get("month")}-${get("day")}`;
+  if (mins >= 21 * 60) return { date: addDays(date, 1), time: "09:00" };
+  return { date, time: TIME_SLOTS[mins / 30] };
+}
+/** Rental days in 24-hour blocks; going over by more than the grace period adds a day. */
+export const rentalDays24 = (pickupMs: number, returnMs: number, graceMinutes: number) =>
+  Math.max(1, Math.ceil((returnMs - pickupMs - graceMinutes * 60_000) / 86_400_000));
+export const prettyDateTime = (iso: string) =>
+  new Date(iso).toLocaleString("en-PH", { timeZone: "Asia/Manila", weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+export const prettyTime = (iso: string) => new Date(iso).toLocaleTimeString("en-PH", { timeZone: "Asia/Manila", hour: "numeric", minute: "2-digit" });
+/** Manila date (YYYY-MM-DD) of an instant. */
+export const manilaDateOf = (iso: string) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Manila", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(iso));
+export const hoursLabel = (ms: number) => {
+  const h = ms / 3_600_000;
+  return Number.isInteger(h) ? `${h} h` : `${h.toFixed(1)} h`;
+};

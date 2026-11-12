@@ -17,53 +17,65 @@ begin perform set_config('request.jwt.claim.sub', uid, false); end $$;
 insert into scooters (id, name, daily_rate) values
   ('a1000000-0000-0000-0000-000000000001', 'Honda Click 125', 500),
   ('a1000000-0000-0000-0000-000000000002', 'Yamaha Mio', 400);
-update rental_settings set deposit_percent = 30, security_deposit = 2000, delivery_fee = 150, max_days = 14;
-create temp table d as select (now() at time zone 'Asia/Manila')::date + 3 as day0;
+update rental_settings set deposit_percent = 30, security_deposit = 2000, delivery_fee = 150, max_days = 14, grace_minutes = 60, turnaround_minutes = 30;
+create temp table d as select ((now() at time zone 'Asia/Manila')::date + 3 + time '09:00') as t0;  -- Manila local 9:00 AM, 3 days ahead
 grant select on d to anon, authenticated;
-create or replace function pg_temp.req(scooter text, s int, e int, extra jsonb default '{}') returns jsonb language sql as $$
-  select jsonb_build_object('scooter_id', scooter, 'start_date', (select day0 from d) + s, 'end_date', (select day0 from d) + e,
+-- times as hours after t0
+create or replace function pg_temp.at(h numeric) returns text language sql as $$ select to_char((select t0 from d) + make_interval(secs => h * 3600), 'YYYY-MM-DD"T"HH24:MI') $$;
+create or replace function pg_temp.req(scooter text, s numeric, e numeric, extra jsonb default '{}') returns jsonb language sql as $$
+  select jsonb_build_object('scooter_id', scooter, 'pickup_at', pg_temp.at(s), 'return_at', pg_temp.at(e),
     'customer_name', 'Ana Reyes', 'customer_phone', '+63 917 111 2222', 'helmets', 2, 'license_path', 'licenses/ana.jpg') || extra
 $$;
 
 -- closed by default
 set role anon;
-select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000001', 0, 2))$q$, 'CLOSED');
+select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000001', 0, 48))$q$, 'CLOSED');
 reset role;
 update rental_settings set bookings_enabled = true;
 
--- happy path: 2 days × ₱500 + ₱150 delivery = ₱1,150; deposit 30% = ₱345
+-- happy path: 48 hours = 2 days × ₱500 + ₱150 delivery = ₱1,150; deposit 30% = ₱345
 set role anon;
 create temp table b1 on commit preserve rows as
-  select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000001', 0, 2, '{"delivery": true, "delivery_address": "Romblon Beach Resort, Room 4", "customer_email": "ana@example.com"}')) r;
+  select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000001', 0, 48, '{"delivery": true, "delivery_address": "Romblon Beach Resort, Room 4", "customer_email": "ana@example.com"}')) r;
 reset role;
-select pg_temp.check((select (r->>'total')::numeric = 1150 and (r->>'deposit')::numeric = 345 and r->>'booking_number' like 'BY-%' from b1), 'server prices it: 2 days × ₱500 + ₱150 delivery = ₱1,150; 30% deposit ₱345');
-select pg_temp.check((select customer_phone = '09171112222' and status = 'awaiting_deposit' and payment_status = 'awaiting_payment' and security_deposit = 2000 and helmets = 2
+select pg_temp.check((select (r->>'total')::numeric = 1150 and (r->>'deposit')::numeric = 345 and (r->>'days')::int = 2 and r->>'booking_number' like 'BY-%' from b1), 'server prices it: 48 h = 2 days × ₱500 + ₱150 delivery = ₱1,150; 30% deposit ₱345');
+select pg_temp.check((select customer_phone = '09171112222' and status = 'awaiting_deposit' and security_deposit = 2000
+                      and to_char(pickup_at at time zone 'Asia/Manila', 'HH24:MI') = '09:00'
+                      and blocked_until = return_at + interval '30 minutes'
                       and payment_expires_at between now() + interval '29 minutes' and now() + interval '31 minutes'
-                      from rental_bookings where public_token = (select (r->>'token')::uuid from b1)), 'booking held for 30 minutes awaiting the deposit; phone normalised; security deposit copied');
+                      from rental_bookings where public_token = (select (r->>'token')::uuid from b1)), 'times stored (9:00 AM Manila), blocked until return + 30-min turnaround; 30-min hold for the deposit');
 
--- same-day = 1 day; return day frees the scooter for the next pickup
+-- 24-hour blocks with a 60-minute grace period (Yamaha, far apart so they don't overlap)
 set role anon;
-select pg_temp.check((book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000001', 2, 2))->>'total')::numeric = 500, 'pickup on the return day of another booking is allowed; same-day return = 1 day');
--- overlaps refused
-select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000001', 1, 3))$q$, 'UNAVAILABLE');
-select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000001', -0, 1))$q$, 'UNAVAILABLE');
-select pg_temp.check((book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 0, 2))->>'total')::numeric = 800, 'another scooter on the same days is fine');
+select pg_temp.check((book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 100, 108))->>'days')::int = 1, '8 hours (same day) = 1 day');
+select pg_temp.check((book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 120, 144.5))->>'days')::int = 1, '24.5 hours = 1 day (inside the 60-min grace)');
+select pg_temp.check((book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 200, 226))->>'days')::int = 2, '26 hours = 2 days (past the grace)');
+
+-- back-to-back on the same scooter respects return time + turnaround
+select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000001', 47, 50))$q$, 'UNAVAILABLE');
+select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000001', 48, 52))$q$, 'UNAVAILABLE');
+select pg_temp.check((book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000001', 48.5, 56))->>'days')::int = 1, 'next pickup allowed 30 min after the return (turnaround)');
+select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000001', -10, 1))$q$, 'UNAVAILABLE');
+select pg_temp.check((select count(*) from busy_scooters(((select t0 from d) + interval '10 hours') at time zone 'Asia/Manila', ((select t0 from d) + interval '12 hours') at time zone 'Asia/Manila')) = 1, 'busy_scooters lists only the scooter taken in that window');
+select pg_temp.check((select count(*) from busy_scooters(((select t0 from d) + interval '60 hours') at time zone 'Asia/Manila', ((select t0 from d) + interval '70 hours') at time zone 'Asia/Manila')) = 0, '…and none when both are free');
 
 -- validation
-select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', -5, -4))$q$, 'pickup date has passed');
-select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 6, 5))$q$, 'return date');
-select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 10, 30))$q$, 'up to 14 days');
-select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 10, 11, '{"customer_phone": "12345"}'))$q$, '09XXXXXXXXX');
-select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 10, 11, '{"helmets": 3}'))$q$, 'helmets');
-select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 10, 11, '{"delivery": true}'))$q$, 'delivery address');
-select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 10, 11, '{"license_path": null}'))$q$, 'license');
-select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 10, 11, '{"license_path": "../etc/passwd"}'))$q$, 'license');
-select pg_temp.expect_error($q$insert into rental_bookings (scooter_id, scooter_name, customer_name, customer_phone, start_date, end_date, days, daily_rate, total, deposit_amount, license_path) values ('a1000000-0000-0000-0000-000000000002','x','x','09171112222',current_date,current_date,1,1,1,1,'licenses/x')$q$, 'row-level security');
+select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 300.25, 310))$q$, 'hour or half hour');
+select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', -100, -90))$q$, 'pickup time has passed');
+select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 300, 300.5))$q$, 'at least 1 hour');
+select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 300, 700))$q$, 'up to 14 days');
+select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 300, 310, '{"pickup_at": "not a time"}'))$q$, 'pickup and return times');
+select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 300, 310, '{"customer_phone": "12345"}'))$q$, '09XXXXXXXXX');
+select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 300, 310, '{"helmets": 3}'))$q$, 'helmets');
+select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 300, 310, '{"delivery": true}'))$q$, 'delivery address');
+select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 300, 310, '{"license_path": null}'))$q$, 'license');
+select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 300, 310, '{"license_path": "../etc/passwd"}'))$q$, 'license');
+select pg_temp.expect_error($q$insert into rental_bookings (scooter_id, scooter_name, customer_name, customer_phone, start_date, end_date, pickup_at, return_at, blocked_until, days, daily_rate, total, deposit_amount, license_path) values ('a1000000-0000-0000-0000-000000000002','x','x','09171112222',current_date,current_date,now(),now()+interval '2 hours',now()+interval '2 hours',1,1,1,1,'licenses/x')$q$, 'row-level security');
 
 -- guests: no table access, status by link, calendar without personal details
 select pg_temp.check((select count(*) from rental_bookings) = 0, 'guests cannot read bookings');
 select pg_temp.check(get_booking_by_token((select (r->>'token')::uuid from b1))->>'status' = 'awaiting_deposit', 'booking status by its secret link');
-select pg_temp.check((select count(*) from scooter_bookings_between((select day0 from d), (select day0 from d) + 5) where scooter_id = 'a1000000-0000-0000-0000-000000000001') = 2, 'calendar lists taken days per scooter');
+select pg_temp.check((select count(*) from scooter_bookings_between((select t0 from d)::date, (select t0 from d)::date + 5) where scooter_id = 'a1000000-0000-0000-0000-000000000001') = 2, 'calendar (older screens) lists taken days per scooter');
 select pg_temp.expect_error($q$select mark_booking_paid('x', 'y', 1)$q$, 'permission denied');
 reset role;
 
@@ -73,8 +85,8 @@ create temp table t2 as select public_token from rental_bookings where scooter_i
 grant select on t2 to anon;
 set role anon;
 select pg_temp.check(get_booking_by_token((select public_token from t2))->>'status' = 'cancelled', 'an unpaid hold shows as cancelled once its 30 minutes pass');
-select pg_temp.check((select count(*) from scooter_bookings_between((select day0 from d), (select day0 from d) + 5) where scooter_id = 'a1000000-0000-0000-0000-000000000002') = 0, 'expired holds no longer block the calendar');
-select pg_temp.check((book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 0, 1))->>'total')::numeric = 400, 'expired hold is released when someone else books those days');
+select pg_temp.check((select count(*) from busy_scooters(((select t0 from d) + interval '100 hours') at time zone 'Asia/Manila', ((select t0 from d) + interval '230 hours') at time zone 'Asia/Manila')) = 0, 'expired holds no longer block those times');
+select pg_temp.check((book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 100, 124))->>'total')::numeric = 400, 'expired hold is released when someone else books those times');
 reset role;
 select pg_temp.check((select cancel_reason from rental_bookings where scooter_id = 'a1000000-0000-0000-0000-000000000002' and status = 'cancelled' limit 1) like 'The deposit was not paid%', 'expired hold cancelled with a reason');
 
