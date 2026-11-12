@@ -13,6 +13,9 @@ export interface RentalSettings {
   max_days: number;
   grace_minutes: number;
   turnaround_minutes: number;
+  sms_enabled: boolean;
+  staff_alert_phones: string | null;
+  reminder_hours: number;
 }
 export interface Scooter {
   id: string;
