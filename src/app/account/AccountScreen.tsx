@@ -13,6 +13,7 @@ import { formatPeso, normalizePhone, ORDER_TYPE_LABEL, STATUS_LABEL } from "@/li
 import { formatDateTime } from "@/lib/hours";
 import { useStoreSettings } from "@/lib/store-settings";
 import { accountTexts } from "@/lib/brands";
+import { isPhoneLoginEmail, phoneLoginEmail } from "@/lib/phone-login";
 import type { Order, Zone } from "@/lib/types";
 import type { User } from "@supabase/supabase-js";
 
@@ -68,9 +69,24 @@ function AuthForms() {
       const p = normalizePhone(phone);
       if (!p) return setMsg({ tone: "red", text: "Mobile number must look like 09XXXXXXXXX." });
       if (password.length < 8) return setMsg({ tone: "red", text: "Password must be at least 8 characters." });
+      const em = email.trim();
+      if (em && !/^\S+@\S+\.\S+$/.test(em)) return setMsg({ tone: "red", text: "Please check your email address, or leave it empty." });
       setBusy(true);
+      if (!em) {
+        // no email: the account signs in with the mobile number
+        const res = await fetch("/api/account/signup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: name.trim(), phone: p, password }) });
+        const j = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setBusy(false);
+          return setMsg({ tone: "red", text: j.error ?? "We couldn't create your account. Please try again." });
+        }
+        const { error } = await supabase.auth.signInWithPassword({ email: phoneLoginEmail(p), password });
+        setBusy(false);
+        if (error) setMsg({ tone: "green", text: `Account created! Sign in with your mobile number ${p} and your password.` });
+        return;
+      }
       const { data, error } = await supabase.auth.signUp({
-        email: email.trim(),
+        email: em,
         password,
         options: { data: { full_name: name.trim(), phone: p }, emailRedirectTo: `${window.location.origin}/account` },
       });
@@ -78,10 +94,13 @@ function AuthForms() {
       if (error) return setMsg({ tone: "red", text: error.message });
       if (!data.session) setMsg({ tone: "green", text: "Almost done! Check your email to confirm your account, then sign in." });
     } else {
+      const id = email.trim();
+      const asPhone = !id.includes("@") ? normalizePhone(id) : null;
+      if (!id.includes("@") && !asPhone) return setMsg({ tone: "red", text: "Enter your email, or your mobile number as 09XXXXXXXXX." });
       setBusy(true);
-      const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+      const { error } = await supabase.auth.signInWithPassword({ email: asPhone ? phoneLoginEmail(asPhone) : id, password });
       setBusy(false);
-      if (error) setMsg({ tone: "red", text: error.message === "Invalid login credentials" ? "Wrong email or password." : error.message });
+      if (error) setMsg({ tone: "red", text: error.message === "Invalid login credentials" ? (asPhone ? "Wrong mobile number or password." : "Wrong email or password.") : error.message });
     }
   };
 
@@ -118,9 +137,25 @@ function AuthForms() {
         )}
         <div>
           <label className="label" htmlFor="a-email">
-            Email
+            {mode === "signup" ? (
+              <>
+                Email <span className="font-normal text-coffee-600">(optional)</span>
+              </>
+            ) : (
+              "Email or mobile number"
+            )}
           </label>
-          <input id="a-email" type="email" autoComplete="email" className="input" value={email} onChange={(e) => setEmail(e.target.value)} required />
+          <input
+            id="a-email"
+            type={mode === "signup" ? "email" : "text"}
+            autoComplete={mode === "signup" ? "email" : "username"}
+            className="input"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder={mode === "signup" ? "you@example.com" : "you@example.com or 09XXXXXXXXX"}
+            required={mode === "signin"}
+          />
+          {mode === "signup" && <p className="hint">No email? Leave it empty — you&apos;ll sign in with your mobile number and password.</p>}
         </div>
         <div>
           <label className="label" htmlFor="a-pass">
@@ -200,7 +235,7 @@ function Profile({ user }: { user: User }) {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="font-display text-2xl font-bold">Hi, {profile.full_name?.split(" ")[0] || "there"}!</h1>
-          <p className="text-sm text-coffee-700">{user.email}</p>
+          <p className="text-sm text-coffee-700">{isPhoneLoginEmail(user.email) ? `Signs in with ${user.email!.split("@")[0]}` : user.email}</p>
         </div>
         <button
           className="btn-secondary btn-sm"
