@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { StoreHeader } from "./Header";
+import { GcashFallback } from "./GcashFallback";
 import { Alert, Badge, PageLoader, Spinner } from "@/components/ui";
 import { getSupabase } from "@/lib/supabase/client";
 import { formatPeso } from "@/lib/format";
@@ -152,6 +153,7 @@ export function BookingStatusScreen({ token }: { token: string }) {
               {paying ? <Spinner /> : `Pay ${formatPeso(b.pay_now ?? b.deposit_amount)} now`}
             </button>
             {error && <Alert>{error}</Alert>}
+            {left > 0 && <GcashFallback token={token} amount={Number(b.pay_now ?? b.deposit_amount)} folder="proofs/rentals" endpoint="/api/rentals/switch-to-gcash" onDone={load} />}
           </section>
         )}
         {checking && (

@@ -90,7 +90,8 @@ export function OrdersBoard() {
           if (row.payment_status === "awaiting_payment") return;
           const known = knownIds.current.has(row.id);
           if (!known) {
-            if (row.payment_method !== "online") return; // only online payments make an order newly visible
+            const switchedToGcash = row.payment_method === "gcash" && row.payment_status === "for_verification" && row.status !== "cancelled";
+            if (row.payment_method !== "online" && !switchedToGcash) return; // only paid online orders or ones switched to GCash become newly visible
             // an online order just got paid (or a late payment on a cancelled one) → show it now
             await addNewOrder(row.id, row.status !== "cancelled");
             return;

@@ -4,6 +4,7 @@
 const { chromium, devices } = require("playwright");
 const path = require("path");
 const { startMockHitpay } = require("./mock-hitpay");
+const RECEIPT = require("path").join(__dirname, "fixtures/gcash-receipt.png");
 const BASE = process.env.BASE_URL || "http://localhost:3000";
 const SHOTS = path.join(__dirname, "../docs/screenshots/");
 const assert = (c, m) => {
@@ -127,6 +128,48 @@ const assert = (c, m) => {
   await admin.goto(BASE + "/admin");
   await card2.waitFor({ timeout: 8000 });
   assert(true, "that order reaches the staff board");
+  mock.opts.webhooks = true;
+
+  // 4c. can't pay online → switch to manual GCash (screenshot), staff verify it
+  const sqlq = (q) => require("child_process").execFileSync("docker", ["exec", "-i", "supabase_db_pahuway-cafe", "psql", "-U", "postgres", "-Atc", q]).toString().trim();
+  const abandon = async (prId) => {
+    await cust.goto(BASE + "/menu");
+    await cust.locator("article", { hasText: "Ensaymada" }).getByRole("button", { name: "Add Ensaymada" }).click();
+    await cust.getByRole("button", { name: /^Add · / }).click();
+    await cust.getByRole("button", { name: /View cart/ }).click();
+    await cust.getByRole("link", { name: "Checkout" }).click();
+    await cust.getByRole("radio", { name: /Pay online/ }).click();
+    await cust.getByRole("button", { name: /Continue to payment/ }).click();
+    await cust.waitForURL(new RegExp(`checkout/${prId}`));
+    await cust.goto(BASE + new URL(mock.requests.get(prId).redirect_url).pathname);
+    await cust.getByText("Complete your payment").waitFor();
+    return mock.requests.get(prId).reference_number;
+  };
+  const no3 = await abandon("pr_3");
+  await cust.getByTestId("gcash-fallback-open").click();
+  const fb = cust.getByTestId("gcash-fallback");
+  assert((await fb.getByTestId("gcash-fallback-amount").textContent()).startsWith("₱"), "Can't pay online? opens the GCash details with the exact amount");
+  await fb.getByRole("button", { name: "Send GCash screenshot" }).click();
+  await fb.getByText("Please attach a screenshot of your GCash payment.").waitFor();
+  await cust.setInputFiles("input[aria-label='GCash payment screenshot']", RECEIPT);
+  await fb.getByRole("button", { name: "Send GCash screenshot" }).click();
+  await cust.getByText("GCash · Verifying").waitFor({ timeout: 10000 });
+  assert((await cust.getByTestId("online-payment-card").count()) === 0, "after sending the screenshot the order switches to GCash (Verifying); the online payment card is gone");
+  assert(sqlq(`select payment_method||'|'||payment_status||'|'||(payment_proof_path like 'proofs/%')||'|'||(payment_expires_at is null) from orders where order_number='${no3}'`) === "gcash|for_verification|true|true", "saved as a GCash payment to verify, with the screenshot; no 30-minute expiry any more");
+  await admin.goto(BASE + "/admin");
+  const card3 = admin.locator("button.card", { hasText: no3 });
+  await card3.waitFor({ timeout: 8000 });
+  assert((await card3.textContent()).includes("GCash"), "the switched order appears on the staff board as GCash to verify");
+
+  // 4d. paid online after all (webhook missed) → switching just confirms the online payment
+  mock.opts.webhooks = false;
+  const no4 = await abandon("pr_4");
+  await cust.request.post(`http://127.0.0.1:4010/checkout/pr_4/pay`, { maxRedirects: 0 }).catch(() => null);
+  await cust.getByTestId("gcash-fallback-open").click();
+  await cust.setInputFiles("input[aria-label='GCash payment screenshot']", RECEIPT);
+  await cust.getByTestId("gcash-fallback").getByRole("button", { name: "Send GCash screenshot" }).click();
+  await cust.getByText("Paid online ✓").waitFor({ timeout: 10000 });
+  assert(sqlq(`select payment_method||'|'||payment_status from orders where order_number='${no4}'`) === "online|paid", "if HitPay shows it was paid, the order is confirmed as paid online instead (no double payment)");
   mock.opts.webhooks = true;
 
   // 5. switch off → option disappears

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { Logo, useCustomerHeaderStyle } from "./Header";
+import { GcashFallback } from "./GcashFallback";
 import { Alert, Badge, PageLoader, Spinner } from "@/components/ui";
 import { getSupabase } from "@/lib/supabase/client";
 import { enableOrderPush, isNativeApp, pushAvailable, type PushResult } from "@/lib/native";
@@ -227,7 +228,7 @@ function Inner({ token }: { token: string }) {
           )}
 
           {awaitingPayment ? (
-            <OnlinePaymentCard token={token} total={order.total} expiresAt={order.payment_expires_at} confirming={returnedFromPayment} />
+            <OnlinePaymentCard token={token} total={order.total} expiresAt={order.payment_expires_at} confirming={returnedFromPayment} onSwitched={load} />
           ) : cancelled ? (
             <div className="mt-5">
               <Alert>
@@ -341,7 +342,7 @@ function Inner({ token }: { token: string }) {
 }
 
 /** Shown while an online order is unpaid: resume HitPay checkout, with a countdown. */
-function OnlinePaymentCard({ token, total, expiresAt, confirming }: { token: string; total: number; expiresAt: string | null; confirming: boolean }) {
+function OnlinePaymentCard({ token, total, expiresAt, confirming, onSwitched }: { token: string; total: number; expiresAt: string | null; confirming: boolean; onSwitched: () => void }) {
   const [now, setNow] = useState(Date.now());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -433,6 +434,7 @@ function OnlinePaymentCard({ token, total, expiresAt, confirming }: { token: str
           {busy ? <Spinner /> : confirming ? "Didn't finish paying? Pay now" : `Pay now · ${formatPeso(total)}`}
         </button>
       )}
+      <GcashFallback token={token} amount={total} folder="proofs" endpoint="/api/payments/switch-to-gcash" onDone={onSwitched} />
     </div>
   );
 }
