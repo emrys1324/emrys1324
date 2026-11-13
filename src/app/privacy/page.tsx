@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@supabase/supabase-js";
 
-export const metadata = { title: "Privacy policy — Pahuway Cafe" };
+export const metadata = { title: "Privacy policy — Padaya" };
 export const revalidate = 3600;
 
 async function getContact() {
