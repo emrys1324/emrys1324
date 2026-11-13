@@ -7,10 +7,12 @@ const BUNDLED = [48, 72, 96, 128, 192, 256, 512].map((n) => ({ src: `/icons/icon
 export default async function manifest(): Promise<MetadataRoute.Manifest> {
   const icons = await getSiteIcons();
   return {
-    name: "Isla by Pahuway Cafe",
-    short_name: "Isla",
-    description: "Order from Pahuway Cafe, San Agustin, Romblon",
+    id: "/",
+    name: "Padaya — Pahuway Cafe & Baybayin Scooter Rental",
+    short_name: "Padaya",
+    description: "Order from Pahuway Cafe and book a Baybayin scooter in San Agustin, Romblon",
     start_url: "/",
+    categories: ["food", "travel", "shopping"],
     scope: "/",
     display: "standalone",
     background_color: "#fbf7f0",

@@ -308,7 +308,7 @@ function BrandingSection({
         <h2 id="branding-title" className="section-title">
           Branding
         </h2>
-        <p className="text-sm text-coffee-700">Each part of the site has its own header. Changes appear on the website and inside the Isla app as soon as you save.</p>
+        <p className="text-sm text-coffee-700">Each part of the site has its own header. Changes appear on the website and in the Padaya home-screen app as soon as you save.</p>
       </div>
 
       <div role="tablist" aria-label="Which branding" className="flex flex-wrap gap-1 rounded-2xl bg-cream p-1">
@@ -489,7 +489,7 @@ function BrandingSection({
       <StaffHeaderSettings s={s} set={set} logo={cafe.logo ?? DEFAULT_LOGO} />
 
       <p className="rounded-2xl bg-cream-100 px-4 py-3 text-sm text-coffee-700">
-        The Isla app&apos;s icon on phones (from the app stores) is set when the app is published and only changes with an app update. The website icon above is for browsers and &ldquo;Add to Home Screen&rdquo;.
+        The website icon above is also the <strong>Padaya</strong> app icon when customers add the site to their home screen. Phones that already added it may keep the old icon until it&apos;s removed and added again.
       </p>
     </section>
   );
