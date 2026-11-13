@@ -15,6 +15,8 @@ export interface RentalSettings {
   turnaround_minutes: number;
   terms: string | null;
   online_enabled: boolean;
+  excess_hour_rate: number; // ₱ per extra hour after full days (default 50)
+  max_excess_hours: number; // extra hours charged by the hour (default 6); more = one more day
   open_time: string; // "08:00:00" — earliest pickup/return
   close_time: string; // "22:00:00" — latest pickup/return
   messenger_url: string | null;
@@ -29,6 +31,7 @@ export interface Scooter {
   description: string | null;
   daily_rate: number;
   units: number;
+  security_deposit: number | null; // null = use the default from rental settings
   photo_url: string | null;
   is_active: boolean;
   sort_order: number;
@@ -127,7 +130,22 @@ export function nextPickupSlot(open = "08:00", close = "22:00"): { date: string;
   if (mins < toMin(open)) return { date, time: open };
   return { date, time: TIME_SLOTS[mins / 30] };
 }
-/** Rental days in 24-hour blocks; going over by more than the grace period adds a day. */
+/**
+ * Price parts for a stay: 24 h or less = 1 day; longer = full days + leftover hours (rounded up), charged
+ * by the hour up to `maxExcess`; more leftover hours than that = one more day. Mirrors rental_quote() in SQL.
+ */
+export function rentalQuote(pickupMs: number, returnMs: number, maxExcess = 6): { days: number; excessHours: number } {
+  const mins = (returnMs - pickupMs) / 60_000;
+  if (mins <= 1440) return { days: 1, excessHours: 0 };
+  const full = Math.floor(mins / 1440);
+  const ex = Math.ceil((mins - full * 1440) / 60);
+  if (ex === 0) return { days: full, excessHours: 0 };
+  return ex <= maxExcess ? { days: full, excessHours: ex } : { days: full + 1, excessHours: 0 };
+}
+/** A scooter's security deposit (its own, else the default). */
+export const securityFor = (s: Pick<Scooter, "security_deposit"> | null | undefined, rs: Pick<RentalSettings, "security_deposit"> | null | undefined) =>
+  Number(s?.security_deposit ?? rs?.security_deposit ?? 0) || 0;
+/** Rental days in 24-hour blocks; going over by more than the grace period adds a day. (Old rule, kept for reference.) */
 export const rentalDays24 = (pickupMs: number, returnMs: number, graceMinutes: number) =>
   Math.max(1, Math.ceil((returnMs - pickupMs - graceMinutes * 60_000) / 86_400_000));
 export const prettyDateTime = (iso: string) =>

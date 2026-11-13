@@ -93,7 +93,7 @@ const t0 = Date.now();
   await cust.fill("#landmark", "Blue gate beside the chapel");
   await cust.fill("#rider-notes", "Please call when near");
   await cust.getByRole("radio", { name: /GCash/ }).click();
-  await cust.fill("#gcash-ref", "1012345678901");
+  if (await cust.locator("#gcash-ref").count()) throw new Error("GCash reference field should be gone");
   await cust.setInputFiles("input[type=file]", RECEIPT);
   await cust.getByText("Change screenshot").waitFor();
   await cust.screenshot({ path: SHOTS + "4-checkout.png", fullPage: true });
@@ -119,7 +119,7 @@ const t0 = Date.now();
 
   await card.click();
   await admin.getByAltText("GCash payment screenshot").waitFor();
-  await admin.getByText("1012345678901").waitFor();
+  await admin.getByText("Check the amount and reference on the screenshot").waitFor();
   await admin.screenshot({ path: SHOTS + "7-staff-order-detail.png" });
   await admin.getByRole("button", { name: "Mark GCash payment verified" }).click();
   await admin.getByText("Paid", { exact: true }).waitFor();

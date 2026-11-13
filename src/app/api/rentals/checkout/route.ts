@@ -12,7 +12,7 @@ export async function POST(req: Request) {
   if (!token || !/^[0-9a-f-]{36}$/i.test(token)) return NextResponse.json({ error: "Invalid booking." }, { status: 400 });
   const { data: b } = await db
     .from("rental_bookings")
-    .select("id, booking_number, public_token, status, payment_status, deposit_amount, customer_name, customer_phone, customer_email, scooter_name, start_date, payment_expires_at, checkout_url")
+    .select("id, booking_number, public_token, status, payment_status, deposit_amount, pay_now, customer_name, customer_phone, customer_email, scooter_name, start_date, payment_expires_at, checkout_url")
     .eq("public_token", token)
     .single();
   if (!b) return NextResponse.json({ error: "Booking not found." }, { status: 404 });
@@ -25,7 +25,7 @@ export async function POST(req: Request) {
   try {
     const pr = await createHostedPayment(
       {
-        amount: Number(b.deposit_amount),
+        amount: Number(b.pay_now ?? b.deposit_amount),
         reference: b.booking_number,
         purpose: `Baybayin scooter rental ${b.booking_number} — deposit (${b.scooter_name}, from ${b.start_date})`,
         name: b.customer_name,

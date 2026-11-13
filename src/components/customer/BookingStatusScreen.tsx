@@ -30,6 +30,10 @@ interface PublicBooking {
   security_deposit: number;
   cancel_reason: string | null;
   payment_expires_at: string | null;
+  excess_hours: number;
+  excess_fee: number;
+  security_upfront: boolean;
+  pay_now: number | null;
 }
 
 /** A customer's booking, by its secret link. GCash: shows whether staff have checked it. Online: confirms with HitPay on return, offers Pay now. */
@@ -141,11 +145,11 @@ export function BookingStatusScreen({ token }: { token: string }) {
             <Alert tone="amber">
               <p className="text-base font-bold">Complete your deposit</p>
               <p className="font-normal">
-                Pay {formatPeso(b.deposit_amount)} within {Math.floor(left / 60000)}:{String(Math.floor((left % 60000) / 1000)).padStart(2, "0")} to keep this booking. After that, the scooter is released for others.
+                Pay {formatPeso(b.pay_now ?? b.deposit_amount)} within {Math.floor(left / 60000)}:{String(Math.floor((left % 60000) / 1000)).padStart(2, "0")} to keep this booking. After that, the scooter is released for others.
               </p>
             </Alert>
             <button className="btn-primary w-full" onClick={payNow} disabled={paying || left === 0}>
-              {paying ? <Spinner /> : `Pay ${formatPeso(b.deposit_amount)} now`}
+              {paying ? <Spinner /> : `Pay ${formatPeso(b.pay_now ?? b.deposit_amount)} now`}
             </button>
             {error && <Alert>{error}</Alert>}
           </section>
@@ -154,7 +158,7 @@ export function BookingStatusScreen({ token }: { token: string }) {
           <Alert tone="amber">
             <p className="text-base font-bold">We&apos;re checking your GCash payment</p>
             <p className="font-normal">
-              Your scooter is held for you while our staff confirm your {formatPeso(b.deposit_amount)} deposit
+              Your scooter is held for you while our staff confirm your {formatPeso(b.pay_now ?? b.deposit_amount)} payment
               {b.gcash_reference ? ` (ref. ${b.gcash_reference})` : ""}. This page updates by itself once it&apos;s confirmed.
             </p>
           </Alert>
@@ -181,10 +185,16 @@ export function BookingStatusScreen({ token }: { token: string }) {
           <dl className="space-y-1 border-t border-coffee-100 pt-2">
             <div className="flex justify-between">
               <dt>
-                {b.days} × {formatPeso(b.daily_rate)}
+                {b.days} day{b.days === 1 ? "" : "s"} × {formatPeso(b.daily_rate)}
               </dt>
               <dd>{formatPeso(b.days * Number(b.daily_rate))}</dd>
             </div>
+            {Number(b.excess_hours) > 0 && (
+              <div className="flex justify-between">
+                <dt>Extra {b.excess_hours} hour{b.excess_hours === 1 ? "" : "s"}</dt>
+                <dd>{formatPeso(b.excess_fee)}</dd>
+              </div>
+            )}
             {b.delivery && (
               <div className="flex justify-between">
                 <dt>Delivery</dt>
@@ -192,32 +202,35 @@ export function BookingStatusScreen({ token }: { token: string }) {
               </div>
             )}
             <div className="flex justify-between font-bold">
-              <dt>Total</dt>
+              <dt>Total rental</dt>
               <dd>{formatPeso(b.total)}</dd>
             </div>
             <div className="flex justify-between">
-              <dt>Deposit {paid ? (b.payment_method === "online" ? "paid online" : "paid") : b.payment_status === "for_verification" ? "sent by GCash (being checked)" : "(not paid yet)"}</dt>
-              <dd>{formatPeso(b.deposit_amount)}</dd>
+              <dt>
+                {b.security_upfront ? "Deposit + security deposit" : "Deposit"}{" "}
+                {paid ? (b.payment_method === "online" ? "paid online" : "paid") : b.payment_status === "for_verification" ? "sent by GCash (being checked)" : "(not paid yet)"}
+              </dt>
+              <dd data-testid="paid-now">{formatPeso(b.pay_now ?? b.deposit_amount)}</dd>
             </div>
             {b.status !== "cancelled" && (
-              <div className="flex justify-between font-semibold">
-                <dt>Balance at pickup</dt>
+              <div className="flex justify-between">
+                <dt>Rental balance</dt>
                 <dd data-testid="balance">{formatPeso(Number(b.total) - Number(b.deposit_amount))}</dd>
               </div>
             )}
-            {Number(b.security_deposit) > 0 && b.status !== "cancelled" && b.status !== "returned" && (
-              <>
-                <div className="flex justify-between">
-                  <dt>
-                    Security deposit at pickup <span className="text-coffee-600">(returnable)</span>
-                  </dt>
-                  <dd>{formatPeso(b.security_deposit)}</dd>
-                </div>
-                <div className="flex justify-between border-t border-coffee-100 pt-1 font-bold">
-                  <dt>To bring at pickup</dt>
-                  <dd data-testid="due-at-pickup">{formatPeso(Number(b.total) - Number(b.deposit_amount) + Number(b.security_deposit))}</dd>
-                </div>
-              </>
+            {Number(b.security_deposit) > 0 && !b.security_upfront && b.status !== "cancelled" && b.status !== "returned" && (
+              <div className="flex justify-between">
+                <dt>
+                  Security deposit at pickup <span className="text-coffee-600">(returnable)</span>
+                </dt>
+                <dd>{formatPeso(b.security_deposit)}</dd>
+              </div>
+            )}
+            {b.status !== "cancelled" && b.status !== "returned" && (
+              <div className="flex justify-between border-t border-coffee-100 pt-1 font-bold">
+                <dt>Total balance at pickup</dt>
+                <dd data-testid="due-at-pickup">{formatPeso(Number(b.total) - Number(b.deposit_amount) + (b.security_upfront ? 0 : Number(b.security_deposit)))}</dd>
+              </div>
             )}
           </dl>
           {Number(b.security_deposit) > 0 && b.status !== "cancelled" && b.status !== "returned" && (

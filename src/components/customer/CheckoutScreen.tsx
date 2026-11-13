@@ -60,7 +60,6 @@ export function CheckoutScreen() {
   const [riderNotes, setRiderNotes] = useState("");
   const [pin, setPin] = useState<LatLng | null>(null);
   const [payment, setPayment] = useState<PaymentMethod>("cash");
-  const [gcashRef, setGcashRef] = useState("");
   const [proof, setProof] = useState<File | null>(null);
   const [proofPreview, setProofPreview] = useState<string | null>(null);
 
@@ -160,7 +159,6 @@ export function CheckoutScreen() {
       if (belowMin) e.min = `Minimum order for delivery is ${formatPeso(minOrder)}.`;
     }
     if (payment === "gcash") {
-      if (gcashRef.replace(/\s/g, "").length < 4) e.gcashRef = "Enter the reference number from your GCash receipt.";
       if (!proof) e.proof = "Please attach a screenshot of your payment.";
       else if (proof.size > 5 * 1024 * 1024) e.proof = "Screenshot is too large (max 5 MB).";
     }
@@ -203,7 +201,7 @@ export function CheckoutScreen() {
           lat: orderType === "delivery" && pin ? pin.lat : null,
           lng: orderType === "delivery" && pin ? pin.lng : null,
           payment_method: payment,
-          gcash_reference: payment === "gcash" ? gcashRef.replace(/\s/g, "") : null,
+          gcash_reference: null,
           payment_proof_path: proofPath,
         },
         p_items: lines.map((l) => ({ menu_item_id: l.menu_item_id, quantity: l.quantity, option_ids: l.options.map((o) => o.id), notes: l.notes })),
@@ -445,13 +443,6 @@ export function CheckoutScreen() {
                   {settings.gcash_number && <p className="font-mono text-lg">{settings.gcash_number}</p>}
                   <p className="mt-1 text-sm text-coffee-600">Our staff will verify your payment before preparing.</p>
                 </div>
-              </div>
-              <div data-error={!!errors.gcashRef}>
-                <label className="label" htmlFor="gcash-ref">
-                  GCash reference no.
-                </label>
-                <input id="gcash-ref" className="input font-mono" inputMode="numeric" value={gcashRef} onChange={(e) => setGcashRef(e.target.value)} maxLength={40} placeholder="e.g. 1012 345 678901" />
-                {errors.gcashRef && <p className="error-text">{errors.gcashRef}</p>}
               </div>
               <div data-error={!!errors.proof}>
                 <span className="label">Payment screenshot</span>

@@ -8,7 +8,7 @@ import { useStoreSettings } from "@/lib/store-settings";
 import { getSupabase } from "@/lib/supabase/client";
 import { formatPeso, friendlyError, normalizePhone } from "@/lib/format";
 import { resizeImage } from "@/lib/upload";
-import { addDays, getRecentBooking, hoursLabel, manilaDate, manilaInstant, nextPickupSlot, prettyDate, rentalDays24, rentalHours, rentalSlots, saveRecentBooking, slotLabel, type RentalSettings, type Scooter } from "@/lib/rentals";
+import { addDays, getRecentBooking, hoursLabel, manilaDate, manilaInstant, nextPickupSlot, prettyDate, rentalQuote, rentalHours, securityFor, rentalSlots, saveRecentBooking, slotLabel, type RentalSettings, type Scooter } from "@/lib/rentals";
 
 
 /** Baybayin booking (pickup only): calendar & times → scooter → details & license → agree to terms → GCash deposit receipt. */
@@ -32,6 +32,7 @@ export function ScooterBooking({ rs, brandName }: { rs: RentalSettings; brandNam
   const [email, setEmail] = useState("");
   const [helmets, setHelmets] = useState(1);
   const [agreed, setAgreed] = useState(false);
+  const [securityNow, setSecurityNow] = useState(false);
   const [method, setMethod] = useState<"online" | "gcash">(rs.online_enabled ? "online" : "gcash");
   const payOnline = rs.online_enabled && method === "online";
   const [proof, setProof] = useState<File | null>(null);
@@ -61,7 +62,12 @@ export function ScooterBooking({ rs, brandName }: { rs: RentalSettings; brandNam
   const pastPickup = !(pickupMs >= Date.now() - 15 * 60_000);
   const tooShort = !(returnMs >= pickupMs + 3_600_000);
   const validDates = !pastPickup && !tooShort;
-  const days = validDates ? rentalDays24(pickupMs, returnMs, rs.grace_minutes ?? 60) : 0;
+  const maxExcess = Number(rs.max_excess_hours ?? 6);
+  const excessRate = Number(rs.excess_hour_rate ?? 50);
+  const quote = validDates ? rentalQuote(pickupMs, returnMs, maxExcess) : { days: 0, excessHours: 0 };
+  const days = quote.days;
+  const excessFee = quote.excessHours * excessRate;
+  const priceFor = (sc: Scooter) => days * Number(sc.daily_rate) + excessFee;
   const tooLong = days > rs.max_days;
   const loadTaken = async () => {
     if (!validDates) return;
@@ -94,8 +100,12 @@ export function ScooterBooking({ rs, brandName }: { rs: RentalSettings; brandNam
   }, [busyIds, pick]);
 
   const scooter = scooters?.find((s) => s.id === pick) ?? null;
-  const total = scooter ? days * Number(scooter.daily_rate) : 0;
+  const total = scooter ? priceFor(scooter) : 0;
   const deposit = total ? Math.min(total, Math.max(1, Math.round((total * rs.deposit_percent) / 100))) : 0;
+  const security = scooter ? securityFor(scooter, rs) : 0;
+  const upfront = securityNow && security > 0;
+  const payNow = deposit + (upfront ? security : 0);
+  const atPickup = total - deposit + (upfront ? 0 : security);
 
   const errors: Record<string, string> = {};
   if (!validDates) errors.dates = pastPickup ? "That pickup time has passed. Please choose a later time." : "Return at least 1 hour after pickup.";
@@ -152,6 +162,7 @@ export function ScooterBooking({ rs, brandName }: { rs: RentalSettings; brandNam
           notes,
           terms_agreed: agreed,
           payment_method: payOnline ? "online" : "gcash",
+          security_upfront: upfront,
           payment_proof_path: proofPath,
         },
       });
@@ -227,9 +238,10 @@ export function ScooterBooking({ rs, brandName }: { rs: RentalSettings; brandNam
             {prettyDate(start)}, {slotLabel(startTime)} → {prettyDate(end)}, {slotLabel(endTime)} · {hoursLabel(returnMs - pickupMs)} ·{" "}
             <strong>
               {days} day{days === 1 ? "" : "s"}
+              {quote.excessHours > 0 && ` + ${quote.excessHours} hour${quote.excessHours === 1 ? "" : "s"}`}
             </strong>
             <br />
-            Charged per 24 hours{(rs.grace_minutes ?? 60) > 0 ? ` — returning up to ${rs.grace_minutes ?? 60} minutes late is free` : ""}.
+            Charged per 24 hours. Extra hours after full days: {formatPeso(excessRate)}/hour (up to {maxExcess}); {maxExcess + 1} or more extra hours count as another day.
           </p>
         ) : (
           <p className="error-text">{errors.dates}</p>
@@ -272,8 +284,15 @@ export function ScooterBooking({ rs, brandName }: { rs: RentalSettings; brandNam
                   {s.description && <span className="block text-sm text-coffee-700">{s.description}</span>}
                   <span className="mt-1 block text-sm">
                     <strong className="tabular-nums">{formatPeso(s.daily_rate)}</strong>/day
-                    {validDates && !tooLong && days > 1 && <span className="text-coffee-700"> · {formatPeso(days * Number(s.daily_rate))} for {days} days</span>}
+                    {validDates && !tooLong && (days > 1 || quote.excessHours > 0) && (
+                      <span className="text-coffee-700">
+                        {" "}
+                        · {formatPeso(priceFor(s))} for {days} day{days === 1 ? "" : "s"}
+                        {quote.excessHours > 0 && ` + ${quote.excessHours} h`}
+                      </span>
+                    )}
                   </span>
+                  {securityFor(s, rs) > 0 && <span className="block text-xs text-coffee-600">{formatPeso(securityFor(s, rs))} security deposit (returnable)</span>}
                 </span>
                 {booked && <Badge tone="gray">Booked</Badge>}
                 {!booked && validDates && Number(s.units) > 1 && freeUnits[s.id] !== undefined && (
@@ -362,36 +381,63 @@ export function ScooterBooking({ rs, brandName }: { rs: RentalSettings; brandNam
               </dt>
               <dd className="tabular-nums">{formatPeso(days * Number(scooter.daily_rate))}</dd>
             </div>
+            {quote.excessHours > 0 && (
+              <div className="flex justify-between gap-3" data-testid="excess-hours">
+                <dt>
+                  Extra {quote.excessHours} hour{quote.excessHours === 1 ? "" : "s"} × {formatPeso(excessRate)}
+                </dt>
+                <dd className="tabular-nums">{formatPeso(excessFee)}</dd>
+              </div>
+            )}
             <div className="flex justify-between gap-3 border-t border-coffee-100 pt-2 text-base font-bold">
               <dt>Total rental</dt>
               <dd className="tabular-nums">{formatPeso(total)}</dd>
             </div>
             <div className="flex justify-between gap-3 font-semibold text-sage-700">
-              <dt>Deposit to pay now ({rs.deposit_percent}%)</dt>
+              <dt>Deposit ({rs.deposit_percent}%)</dt>
               <dd className="tabular-nums">{formatPeso(deposit)}</dd>
             </div>
-            <div className="flex justify-between gap-3">
-              <dt>Balance at pickup</dt>
+            {upfront && (
+              <div className="flex justify-between gap-3 font-semibold text-sage-700">
+                <dt>
+                  Security deposit <span className="font-normal">(returnable)</span>
+                </dt>
+                <dd className="tabular-nums">{formatPeso(security)}</dd>
+              </div>
+            )}
+            <div className="flex justify-between gap-3 font-bold text-sage-700" data-testid="pay-now">
+              <dt>To pay now</dt>
+              <dd className="tabular-nums">{formatPeso(payNow)}</dd>
+            </div>
+            <div className="flex justify-between gap-3 border-t border-coffee-100 pt-2">
+              <dt>Rental balance</dt>
               <dd className="tabular-nums">{formatPeso(total - deposit)}</dd>
             </div>
-            {Number(rs.security_deposit) > 0 && (
-              <>
-                <div className="flex justify-between gap-3" data-testid="security-deposit">
-                  <dt>
-                    Security deposit at pickup <span className="text-coffee-600">(returnable)</span>
-                  </dt>
-                  <dd className="tabular-nums">{formatPeso(rs.security_deposit)}</dd>
-                </div>
-                <div className="flex justify-between gap-3 border-t border-coffee-100 pt-2 font-bold" data-testid="due-at-pickup">
-                  <dt>To bring at pickup</dt>
-                  <dd className="tabular-nums">{formatPeso(total - deposit + Number(rs.security_deposit))}</dd>
-                </div>
-              </>
+            {security > 0 && !upfront && (
+              <div className="flex justify-between gap-3" data-testid="security-deposit">
+                <dt>
+                  Security deposit at pickup <span className="text-coffee-600">(returnable)</span>
+                </dt>
+                <dd className="tabular-nums">{formatPeso(security)}</dd>
+              </div>
             )}
+            <div className="flex justify-between gap-3 font-bold" data-testid="due-at-pickup">
+              <dt>Total balance at pickup</dt>
+              <dd className="tabular-nums">{formatPeso(atPickup)}</dd>
+            </div>
           </dl>
-          {Number(rs.security_deposit) > 0 && (
+          {security > 0 && (
+            <label className="flex items-start gap-3 rounded-xl bg-cream-100 px-3 py-2 text-sm font-medium">
+              <input type="checkbox" className="mt-0.5 h-5 w-5 shrink-0 accent-coffee-700" checked={securityNow} onChange={(e) => setSecurityNow(e.target.checked)} />
+              <span>
+                Pay the {formatPeso(security)} security deposit now, together with the deposit
+                <span className="block font-normal text-coffee-700">Leave unticked to pay it at pickup instead.</span>
+              </span>
+            </label>
+          )}
+          {security > 0 && (
             <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">
-              The {formatPeso(rs.security_deposit)} security deposit{rs.security_deposit_note ? ` (${rs.security_deposit_note})` : ""} is returned when the scooter comes back in good condition.
+              The {formatPeso(security)} security deposit{rs.security_deposit_note ? ` (${rs.security_deposit_note})` : ""} is returned when the scooter comes back in good condition.
             </p>
           )}
           <p className="hint">Pickup only{rs.pickup_note ? `: ${rs.pickup_note}` : ""}. Pay the balance when you pick up the scooter.</p>
@@ -426,7 +472,7 @@ export function ScooterBooking({ rs, brandName }: { rs: RentalSettings; brandNam
         )}
         {agreed && payOnline && (
           <div className="rounded-2xl bg-cream-100 p-4 text-sm text-coffee-800" data-testid="online-payment">
-            <p className="text-base font-semibold">Deposit to pay online: {deposit ? formatPeso(deposit) : "—"}</p>
+            <p className="text-base font-semibold">To pay online: {payNow ? formatPeso(payNow) : "—"}</p>
             <p>You&apos;ll go to our secure payment page (HitPay) to pay with GCash, Maya or your bank app by scanning the QR Ph code, or with online banking. Your booking is confirmed as soon as the payment goes through. Please pay within 30 minutes.</p>
           </div>
         )}
@@ -443,7 +489,7 @@ export function ScooterBooking({ rs, brandName }: { rs: RentalSettings; brandNam
               <div>
                 <p className="text-sm text-coffee-700">Send exactly</p>
                 <p className="text-3xl font-bold tabular-nums" data-testid="gcash-amount">
-                  {deposit ? formatPeso(deposit) : "—"}
+                  {payNow ? formatPeso(payNow) : "—"}
                 </p>
                 {!deposit && <p className="text-sm text-coffee-600">Choose your dates and a scooter first.</p>}
                 {settings?.gcash_name && <p className="mt-1 font-semibold">{settings.gcash_name}</p>}
@@ -475,7 +521,7 @@ export function ScooterBooking({ rs, brandName }: { rs: RentalSettings; brandNam
       <div className="fixed inset-x-0 bottom-0 z-20 border-t border-coffee-100 bg-cream/95 px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur">
         <div className="mx-auto max-w-lg">
           <button className="btn-primary w-full" disabled={busy}>
-            {busy ? <Spinner /> : agreed && deposit ? (payOnline ? `Pay ${formatPeso(deposit)} deposit online` : `Book & send ${formatPeso(deposit)} deposit`) : `Book a scooter from ${brandName}`}
+            {busy ? <Spinner /> : agreed && deposit ? (payOnline ? `Pay ${formatPeso(payNow)} online` : `Book & send ${formatPeso(payNow)}`) : `Book a scooter from ${brandName}`}
           </button>
         </div>
       </div>

@@ -47,7 +47,8 @@ export function WelcomeForm() {
           if (error) throw new Error(expired);
         } else if (q.get("code")) {
           const { error } = await supabase.auth.exchangeCodeForSession(q.get("code")!);
-          if (error) throw new Error(expired);
+          // the Supabase client may already have exchanged the code on load — fine if we're signed in now
+          if (error && !(await supabase.auth.getSession()).data.session) throw new Error(expired);
         }
         window.history.replaceState(null, "", "/welcome"); // drop the one-time token from the address bar
         const { data } = await supabase.auth.getUser();

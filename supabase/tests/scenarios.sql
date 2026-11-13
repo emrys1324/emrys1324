@@ -72,7 +72,7 @@ select pg_temp.expect_error($q$select place_order('{"customer_name":"Al","custom
 select pg_temp.expect_error($q$select place_order('{"customer_name":"Al","customer_phone":"09171234567","order_type":"pickup","payment_method":"cash"}', '[{"menu_item_id":"30000000-0000-0000-0000-000000000002","quantity":1}]')$q$, 'Please choose a temperature');
 select pg_temp.expect_error(format($q$select place_order('{"customer_name":"Al","customer_phone":"09171234567","order_type":"delivery","zone_id":"%s","street":"x","payment_method":"cash"}', '[{"menu_item_id":"30000000-0000-0000-0000-000000000013","quantity":1}]')$q$, (select zone from ctx)), 'Minimum order');
 select pg_temp.expect_error(format($q$select place_order('{"customer_name":"Al","customer_phone":"09171234567","order_type":"pickup","payment_method":"cash"}', '[{"menu_item_id":"30000000-0000-0000-0000-000000000002","quantity":1,"option_ids":["%s","%s","%s"]}]')$q$, (select iced from ctx),(select hot from ctx),(select sugar50 from ctx)), 'Choose only one');
-select pg_temp.expect_error($q$select place_order('{"customer_name":"Al","customer_phone":"09171234567","order_type":"pickup","payment_method":"gcash"}', '[{"menu_item_id":"30000000-0000-0000-0000-000000000013","quantity":1}]')$q$, 'reference');
+select pg_temp.expect_error($q$select place_order('{"customer_name":"Al","customer_phone":"09171234567","order_type":"pickup","payment_method":"gcash"}', '[{"menu_item_id":"30000000-0000-0000-0000-000000000013","quantity":1}]')$q$, 'screenshot');
 select pg_temp.expect_error($q$select place_order('{"customer_name":"Al","customer_phone":"09171234567","order_type":"pickup","payment_method":"cash","scheduled_for":"2020-01-01T10:00:00Z"}', '[{"menu_item_id":"30000000-0000-0000-0000-000000000013","quantity":1}]')$q$, 'no longer available');
 select pg_temp.expect_error($q$insert into orders (customer_name, customer_phone, order_type, subtotal, total, payment_method) values ('x','09171234567','pickup',1,1,'cash')$q$, 'row-level security');
 select pg_temp.expect_error($q$select daily_summary()$q$, 'permission denied');
@@ -146,3 +146,12 @@ reset role;
 select 'ALL SCENARIOS PASSED';
 select case when is_sold_out then 'FAIL customer changed menu' else 'ok customer cannot edit menu' end from menu_items where id = '30000000-0000-0000-0000-000000000001';
 select case when status = 'completed' then 'ok' else 'FAIL' end from orders where order_number = 'PH-0001';
+
+-- GCash orders no longer need a reference number (the screenshot is enough)
+update store_settings set open_time = '00:00', close_time = '00:00', is_open = true;
+do $$ begin
+  if (place_order('{"customer_name":"Gina","customer_phone":"09171234567","order_type":"pickup","payment_method":"gcash","payment_proof_path":"proofs/2026/gina.jpg"}', '[{"menu_item_id":"30000000-0000-0000-0000-000000000013","quantity":1}]')->>'order_number') is null then
+    raise exception 'FAIL: GCash order without a reference was refused';
+  end if;
+  raise notice 'ok GCash order without a reference number is accepted (the screenshot is enough)';
+end $$;
