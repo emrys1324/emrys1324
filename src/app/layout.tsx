@@ -12,6 +12,7 @@ const BASE_METADATA: Metadata = {
   description: "Specialty coffee in San Agustin, Romblon. Order for pickup, dine-in or delivery.",
   appleWebApp: { capable: true, title: "Padaya", statusBarStyle: "default" },
   applicationName: "Padaya",
+  manifest: "/manifest.webmanifest",
 };
 
 /** Browser-tab and home-screen icons: the one uploaded in Settings → Branding, else the bundled ones. */

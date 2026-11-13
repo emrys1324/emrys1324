@@ -7,7 +7,7 @@ export const metadata = { title: "My deliveries — Padaya" };
 
 export default async function RiderPage() {
   const session = await getSessionRole();
-  if (!session) redirect("/login?next=/rider");
-  if (session.role !== "rider") redirect("/login?denied=1");
+  if (!session) redirect("/rider/login");
+  if (session.role !== "rider") redirect("/rider/login?denied=1");
   return <RiderScreen />;
 }
