@@ -55,11 +55,10 @@ async function book(page, { scooter, start, end, startTime = "09:00", endTime = 
   await page.getByRole("radio", { name: helmets === 2 ? "2 (+ passenger)" : helmets === 1 ? "1 (rider)" : "None" }).click();
   await page.setInputFiles("input[aria-label=\"Driver's license photo\"]", F("test-background.png"));
 }
-async function payGcash(page, ref = "1012 345 678901") {
+async function payGcash(page) {
   await page.getByLabel("I have read and agree to the terms and conditions").check();
   const manual = page.getByRole("radio", { name: /GCash \(send manually\)/ });
   if (await manual.count()) await manual.click();
-  await page.locator("#gcash-ref").fill(ref);
   await page.setInputFiles("input[aria-label='GCash payment screenshot']", F("test-logo.png"));
   await page.getByRole("button", { name: /^Book & send ₱[\d,]+ deposit$/ }).click();
   await page.waitForURL(/\/baybayin\/booking\/[0-9a-f-]{36}$/);
@@ -159,21 +158,21 @@ async function payGcash(page, ref = "1012 345 678901") {
   await cust.getByTestId("rental-days").getByText("2 days").waitFor();
   const summary = await cust.getByTestId("rental-summary").textContent();
   assert(summary.includes("₱1,000") && summary.includes("₱300") && summary.includes("₱700"), "summary: 2 days × ₱500 = ₱1,000; 30% deposit ₱300; ₱700 at pickup");
+  assert((await cust.getByTestId("security-deposit").textContent()).includes("₱2,000") && (await cust.getByTestId("due-at-pickup").textContent()).includes("₱2,700"), "payment summary includes the ₱2,000 security deposit at pickup: ₱700 balance + ₱2,000 = ₱2,700 to bring");
   await cust.getByLabel("I have read and agree to the terms and conditions").check();
   await cust.getByTestId("gcash-payment").waitFor();
   assert((await cust.getByTestId("gcash-amount").textContent()) === "₱300" && (await cust.getByTestId("gcash-payment").textContent()).includes("0917 555 0000"), "after agreeing, the GCash form shows the café's GCash and the ₱300 deposit to send");
   await cust.getByRole("button", { name: "Book & send ₱300 deposit" }).click();
-  await cust.getByText("Enter the reference number from your GCash receipt.").waitFor();
   await cust.getByText("Please attach a screenshot of your GCash payment.").waitFor();
-  assert(true, "GCash reference and screenshot are required");
+  assert((await cust.locator("#gcash-ref").count()) === 0, "GCash: only the payment screenshot is required (no reference number field)");
   const bookingNo = await payGcash(cust);
   await cust.getByText("We're checking your GCash payment").first().waitFor();
   assert(/^BY-\d{4}$/.test(bookingNo), `booking ${bookingNo} made; the customer sees "We're checking your GCash payment"`);
-  const row1 = sql(`select status||'|'||payment_status||'|'||payment_method||'|'||gcash_reference||'|'||(payment_proof_path like 'proofs/rentals/%')||'|'||(payment_expires_at is null)||'|'||(terms_snapshot = (select terms from rental_settings))||'|'||delivery from rental_bookings where booking_number='${bookingNo}'`);
-  assert(row1 === "awaiting_deposit|for_verification|gcash|1012345678901|true|true|true|false", `booking saved for GCash checking, receipt stored privately, terms copy kept, pickup only (${row1})`);
+  const row1 = sql(`select status||'|'||payment_status||'|'||payment_method||'|'||coalesce(gcash_reference, '-')||'|'||(payment_proof_path like 'proofs/rentals/%')||'|'||(payment_expires_at is null)||'|'||(terms_snapshot = (select terms from rental_settings))||'|'||delivery from rental_bookings where booking_number='${bookingNo}'`);
+  assert(row1 === "awaiting_deposit|for_verification|gcash|-|true|true|true|false", `booking saved for GCash checking, receipt stored privately, terms copy kept, pickup only (${row1})`);
   await until(() => textsTo("09170000001", /New booking/).length === 1, "staff alert");
   const alert = textsTo("09170000001", /New booking/)[0].message;
-  assert(alert.includes(bookingNo) && alert.includes("Ana Reyes 09171112222") && alert.includes("GCash deposit P300 ref 1012345678901 - please check"), `staff get a "check the GCash" text: "${alert}"`);
+  assert(alert.includes(bookingNo) && alert.includes("Ana Reyes 09171112222") && alert.includes("GCash deposit P300 - please check the receipt"), `staff get a "check the GCash" text: "${alert}"`);
   assert(textsTo("09171112222").length === 0, "no confirmation text to the customer before staff verify");
 
   // ---------- availability calendar + no double booking ----------
@@ -208,7 +207,7 @@ async function payGcash(page, ref = "1012 345 678901") {
   await sheet.getByText("Ana Reyes").waitFor();
   await until(() => sheet.getByTestId("gcash-receipt").evaluate((img) => img.complete && img.naturalWidth > 0).catch(() => false), "receipt to load");
   await until(() => sheet.getByTestId("license-photo").evaluate((img) => img.complete && img.naturalWidth > 0).catch(() => false), "license photo to load");
-  assert((await sheet.getByTestId("gcash-proof").textContent()).includes("1012345678901") && (await sheet.getByTestId("gcash-proof").textContent()).includes("₱300"), "staff see the GCash reference, amount and receipt screenshot (private, signed link) next to the license");
+  assert((await sheet.getByTestId("gcash-proof").textContent()).includes("₱300"), "staff see the amount and the GCash receipt screenshot (private, signed link) next to the license");
   await sheet.getByRole("button", { name: "Deposit verified" }).click();
   await until(() => sql(`select status||'|'||payment_status||'|'||(deposit_paid_at is not null) from rental_bookings where booking_number='${bookingNo}'`) === "confirmed|deposit_paid|true", "verified");
   assert(true, "Deposit verified → booking confirmed, deposit marked paid and time-stamped");
@@ -217,7 +216,8 @@ async function payGcash(page, ref = "1012 345 678901") {
   assert(conf.includes(bookingNo) && conf.includes("Balance at pickup P700") && /^[\x20-\x7E]+$/.test(conf), `customer gets the confirmation text after staff verify: "${conf}"`);
   await cust.reload();
   await cust.getByText("You're booked! Deposit received ✓").waitFor();
-  assert((await cust.getByTestId("balance").textContent()) === "₱700", "customer's booking page: booked, ₱700 balance at pickup");
+  assert((await cust.getByTestId("balance").textContent()) === "₱700" && (await cust.getByTestId("due-at-pickup").textContent()) === "₱2,700", "customer's booking page: booked, ₱700 balance + ₱2,000 security deposit = ₱2,700 to bring at pickup");
+  assert((await cust.getByTestId("screenshot-note").textContent()).includes("Take a screenshot of this page and present it upon pickup"), "booking page asks the customer to screenshot it and present it at pickup");
   await sheet.getByRole("button", { name: "Mark picked up" }).click();
   await until(() => sql(`select status from rental_bookings where booking_number='${bookingNo}'`) === "picked_up", "picked up");
   await sheet.getByRole("button", { name: "Balance collected" }).click();
@@ -246,7 +246,7 @@ async function payGcash(page, ref = "1012 345 678901") {
 
   // ---------- staff reject a payment ----------
   await book(cust2, { scooter: "Yamaha Mio", start: ymd(10), end: ymd(10), startTime: "09:00", endTime: "17:00", name: "Ben Cruz", phone: "09181234567" });
-  const no2 = await payGcash(cust2, "9999");
+  const no2 = await payGcash(cust2);
   await admin.getByRole("radio", { name: /GCash to check/ }).click();
   await admin.getByTestId("booking-row").filter({ hasText: no2 }).click();
   await sheet.getByText("Ben Cruz").waitFor();
@@ -264,7 +264,7 @@ async function payGcash(page, ref = "1012 345 678901") {
   // ---------- verified, then cancelled → refund sent back by GCash ----------
   const cust3 = await (await browser.newContext(phone)).newPage();
   await book(cust3, { scooter: "Yamaha Mio", start: ymd(20), end: ymd(22), name: "Cara Lim", phone: "09191234567" });
-  const no3 = await payGcash(cust3, "5555 6666");
+  const no3 = await payGcash(cust3);
   await admin.getByRole("radio", { name: /GCash to check/ }).click();
   await admin.getByTestId("booking-row").filter({ hasText: no3 }).click();
   await sheet.getByRole("button", { name: "Deposit verified" }).click();
@@ -296,9 +296,9 @@ async function payGcash(page, ref = "1012 345 678901") {
   assert((await cust5.getByRole("radio", { name: /Pay online/ }).count()) === 0, "payment choices stay hidden until the terms are agreed");
   await cust5.getByLabel("I have read and agree to the terms and conditions").check();
   await cust5.getByTestId("online-payment").waitFor();
-  assert((await cust5.getByRole("radio", { name: /Pay online/ }).getAttribute("aria-checked")) === "true" && (await cust5.locator("#gcash-ref").count()) === 0, "after agreeing: Pay online (selected) or GCash (send manually); no receipt needed online");
+  assert((await cust5.getByRole("radio", { name: /Pay online/ }).getAttribute("aria-checked")) === "true" && (await cust5.getByTestId("gcash-payment").count()) === 0, "after agreeing: Pay online (selected) or GCash (send manually); no receipt needed online");
   await cust5.getByRole("radio", { name: /GCash \(send manually\)/ }).click();
-  await cust5.locator("#gcash-ref").waitFor();
+  await cust5.getByTestId("gcash-payment").waitFor();
   await cust5.getByRole("radio", { name: /Pay online/ }).click();
   await cust5.getByRole("button", { name: "Pay ₱150 deposit online" }).click();
   await cust5.waitForURL(/127\.0\.0\.1:4010\/checkout\/pr_\d+/);

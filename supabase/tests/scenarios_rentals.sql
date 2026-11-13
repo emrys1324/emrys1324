@@ -92,7 +92,12 @@ select pg_temp.check((select count(*) from busy_scooters(((select t0 from d) + i
 
 -- validation
 select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 300, 312, '{"terms_agreed": false}'))$q$, 'terms and conditions');
-select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 300, 312, '{"gcash_reference": "12"}'))$q$, 'GCash reference');
+create temp table b_noref on commit preserve rows as
+  select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 300, 312, '{"gcash_reference": null}')) r;
+reset role;
+select pg_temp.check((select gcash_reference is null and payment_status = 'for_verification' from rental_bookings where public_token = (select (r->>'token')::uuid from b_noref)), 'GCash booking without a reference number is accepted (the receipt screenshot is enough)');
+update rental_bookings set status = 'cancelled', cancel_reason = 'test' where public_token = (select (r->>'token')::uuid from b_noref);
+set role anon;
 select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 300, 312, '{"payment_proof_path": null}'))$q$, 'screenshot of your GCash');
 select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 300, 312, '{"payment_proof_path": "proofs/2026/cafe-order.jpg"}'))$q$, 'screenshot of your GCash');
 select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 300.25, 312))$q$, 'hour or half hour');

@@ -34,7 +34,6 @@ export function ScooterBooking({ rs, brandName }: { rs: RentalSettings; brandNam
   const [agreed, setAgreed] = useState(false);
   const [method, setMethod] = useState<"online" | "gcash">(rs.online_enabled ? "online" : "gcash");
   const payOnline = rs.online_enabled && method === "online";
-  const [gcashRef, setGcashRef] = useState("");
   const [proof, setProof] = useState<File | null>(null);
   const [proofPreview, setProofPreview] = useState<string | null>(null);
   const [calKey, setCalKey] = useState(0);
@@ -110,7 +109,6 @@ export function ScooterBooking({ rs, brandName }: { rs: RentalSettings; brandNam
   else if (license.size > 8 * 1024 * 1024) errors.license = "That photo is too large (max 8 MB).";
   if (!agreed) errors.terms = "Please read and agree to the terms and conditions.";
   else if (!payOnline) {
-    if (gcashRef.replace(/\s/g, "").length < 4) errors.gcashRef = "Enter the reference number from your GCash receipt.";
     if (!proof) errors.proof = "Please attach a screenshot of your GCash payment.";
     else if (proof.size > 5 * 1024 * 1024) errors.proof = "Screenshot is too large (max 5 MB).";
   }
@@ -154,7 +152,6 @@ export function ScooterBooking({ rs, brandName }: { rs: RentalSettings; brandNam
           notes,
           terms_agreed: agreed,
           payment_method: payOnline ? "online" : "gcash",
-          gcash_reference: payOnline ? null : gcashRef.replace(/\s/g, ""),
           payment_proof_path: proofPath,
         },
       });
@@ -377,11 +374,24 @@ export function ScooterBooking({ rs, brandName }: { rs: RentalSettings; brandNam
               <dt>Balance at pickup</dt>
               <dd className="tabular-nums">{formatPeso(total - deposit)}</dd>
             </div>
+            {Number(rs.security_deposit) > 0 && (
+              <>
+                <div className="flex justify-between gap-3" data-testid="security-deposit">
+                  <dt>
+                    Security deposit at pickup <span className="text-coffee-600">(returnable)</span>
+                  </dt>
+                  <dd className="tabular-nums">{formatPeso(rs.security_deposit)}</dd>
+                </div>
+                <div className="flex justify-between gap-3 border-t border-coffee-100 pt-2 font-bold" data-testid="due-at-pickup">
+                  <dt>To bring at pickup</dt>
+                  <dd className="tabular-nums">{formatPeso(total - deposit + Number(rs.security_deposit))}</dd>
+                </div>
+              </>
+            )}
           </dl>
           {Number(rs.security_deposit) > 0 && (
-            <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900" data-testid="security-deposit">
-              <strong>Security deposit at pickup: {formatPeso(rs.security_deposit)}</strong>
-              {rs.security_deposit_note ? ` ${rs.security_deposit_note}` : ""} — returned when the scooter comes back in good condition.
+            <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              The {formatPeso(rs.security_deposit)} security deposit{rs.security_deposit_note ? ` (${rs.security_deposit_note})` : ""} is returned when the scooter comes back in good condition.
             </p>
           )}
           <p className="hint">Pickup only{rs.pickup_note ? `: ${rs.pickup_note}` : ""}. Pay the balance when you pick up the scooter.</p>
@@ -440,13 +450,6 @@ export function ScooterBooking({ rs, brandName }: { rs: RentalSettings; brandNam
                 {settings?.gcash_number && <p className="font-mono text-lg">{settings.gcash_number}</p>}
                 <p className="mt-1 text-sm text-coffee-600">Our staff will check your payment and confirm your booking.</p>
               </div>
-            </div>
-            <div data-error={tried && !!errors.gcashRef}>
-              <label className="label" htmlFor="gcash-ref">
-                GCash reference no.
-              </label>
-              <input id="gcash-ref" className="input font-mono" inputMode="numeric" value={gcashRef} onChange={(e) => setGcashRef(e.target.value)} maxLength={40} placeholder="e.g. 1012 345 678901" />
-              {show("gcashRef")}
             </div>
             <div data-error={tried && !!errors.proof}>
               <span className="label">Payment screenshot</span>
