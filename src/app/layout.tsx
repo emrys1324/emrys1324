@@ -8,7 +8,7 @@ import { StoreSettingsProvider } from "@/lib/store-settings";
 import { getSiteIcons } from "@/lib/site-icons";
 
 const BASE_METADATA: Metadata = {
-  title: "Pahuway Cafe — Order online",
+  title: "Padaya",
   description: "Specialty coffee in San Agustin, Romblon. Order for pickup, dine-in or delivery.",
   appleWebApp: { capable: true, title: "Padaya", statusBarStyle: "default" },
   applicationName: "Padaya",
