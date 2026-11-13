@@ -10,12 +10,14 @@ import { useCart, getRecentOrders, type RecentOrder } from "@/lib/cart";
 import { formatPeso } from "@/lib/format";
 import { formatClock, formatHours } from "@/lib/hours";
 import { useStoreSettings } from "@/lib/store-settings";
+import { useFirstName } from "@/lib/use-first-name";
 import type { MenuItem } from "@/lib/types";
 
 export function MenuScreen() {
   const { data, error } = useMenu();
   const { settings, open } = useStoreSettings();
   const { count, subtotal, lines } = useCart();
+  const firstName = useFirstName();
   const [active, setActive] = useState<MenuItem | null>(null);
   const [cartOpen, setCartOpen] = useState(false);
   const [recent, setRecent] = useState<RecentOrder | null>(null);
@@ -48,8 +50,14 @@ export function MenuScreen() {
 
       <main className="mx-auto max-w-5xl px-4">
         <section className="py-5">
-          <h1 className="font-display text-2xl font-bold leading-tight sm:text-4xl">
-            Slow down. <span className="text-sage-600">Order Online</span>
+          <h1 data-testid="menu-greeting" className="font-display text-2xl font-bold leading-tight sm:text-4xl">
+            Welcome
+            {firstName !== undefined && (
+              <>
+                , <span className="text-sage-600">{firstName ?? "guest"}</span>
+              </>
+            )}
+            !
           </h1>
           <p className="mt-1 text-coffee-700">Specialty coffee &amp; island comfort food. Pickup, dine-in pre-order or delivery.</p>
           {settings && <p className="mt-1 text-sm font-medium text-coffee-600">Open daily · {formatHours(settings)}</p>}

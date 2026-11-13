@@ -169,11 +169,17 @@ const assert = (c, m) => {
   await page.goto(BASE + "/");
   await page.getByTestId("welcome-title").getByText("Welcome, Lea!").waitFor();
   assert(true, "signed in: the home page greets the customer by first name (Welcome, Lea!)");
+  await page.goto(BASE + "/menu");
+  await page.waitForFunction(() => /Welcome, Lea!/.test(document.querySelector("[data-testid=menu-greeting]")?.textContent?.replace(/\s+/g, " ") ?? ""));
+  assert(true, "signed in: the café menu headline says Welcome, Lea!");
   await page.goto(BASE + "/account");
   await page.getByRole("button", { name: "Sign out" }).click();
   await page.waitForURL(BASE + "/");
   await page.getByTestId("welcome-title").getByText("Welcome!", { exact: true }).waitFor();
   assert(true, "signed out: the normal welcome title is back");
+  await page.goto(BASE + "/menu");
+  await page.waitForFunction(() => /Welcome, guest!/.test(document.querySelector("[data-testid=menu-greeting]")?.textContent?.replace(/\s+/g, " ") ?? ""));
+  assert(true, "signed out: the café menu headline says Welcome, guest!");
   const bayTitle = await (await fetch(BASE + "/baybayin")).text();
   assert(/<title>Baybayin scooter rental — Book now<\/title>/.test(bayTitle), "Baybayin page title says Book now");
 
