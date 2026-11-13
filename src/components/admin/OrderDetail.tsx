@@ -225,9 +225,13 @@ export function OrderDetail({ order, riders, onClose }: { order: Order | null; r
           </div>
           {o.payment_method === "gcash" && (
             <div className="mt-3 space-y-3">
-              <p>
-                Reference no.: <span className="font-mono text-lg font-bold">{o.gcash_reference}</span>
-              </p>
+              {o.gcash_reference ? (
+                <p>
+                  Reference no.: <span className="font-mono text-lg font-bold">{o.gcash_reference}</span>
+                </p>
+              ) : (
+                <p className="text-sm text-coffee-700">Check the amount and reference on the screenshot against your GCash app.</p>
+              )}
               {proofUrl ? (
                 <a href={proofUrl} target="_blank" rel="noreferrer" className="block">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
