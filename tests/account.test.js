@@ -166,6 +166,16 @@ const assert = (c, m) => {
   await page.getByRole("button", { name: "Sign in", exact: true }).last().click();
   await page.getByRole("heading", { name: "Hi, Lea!" }).waitFor();
   assert(true, "the customer changes the temporary password in their account and signs in with the new one");
+  await page.goto(BASE + "/");
+  await page.getByTestId("welcome-title").getByText("Welcome, Lea!").waitFor();
+  assert(true, "signed in: the home page greets the customer by first name (Welcome, Lea!)");
+  await page.goto(BASE + "/account");
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await page.waitForURL(BASE + "/");
+  await page.getByTestId("welcome-title").getByText("Welcome!", { exact: true }).waitFor();
+  assert(true, "signed out: the normal welcome title is back");
+  const bayTitle = await (await fetch(BASE + "/baybayin")).text();
+  assert(/<title>Baybayin scooter rental — Book now<\/title>/.test(bayTitle), "Baybayin page title says Book now");
 
   // ---- the server route refuses bad input
   const r = await fetch(BASE + "/api/account/signup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "X", phone: "123", password: "x" }) });
