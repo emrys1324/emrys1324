@@ -354,6 +354,16 @@ async function payGcash(page) {
   await cust6.getByRole("button", { name: "Pay ₱120 now" }).click();
   await cust6.waitForURL(new RegExp(`/checkout/${pr6}$`));
   assert(true, "leaving HitPay unpaid: the booking page offers Pay now, which resumes the same payment");
+  await cust6.goBack();
+  await cust6.getByText("Complete your deposit").waitFor({ timeout: 10000 });
+  await cust6.getByTestId("gcash-fallback-open").click();
+  assert((await cust6.getByTestId("gcash-fallback-amount").textContent()) === "₱120", "Can't pay online? shows the GCash details for the ₱120 deposit");
+  await cust6.setInputFiles("input[aria-label='GCash payment screenshot']", F("test-logo.png"));
+  await cust6.getByTestId("gcash-fallback").getByRole("button", { name: "Send GCash screenshot" }).click();
+  await cust6.getByText("We're checking your GCash payment").first().waitFor({ timeout: 10000 });
+  assert(sql("select payment_method||'|'||payment_status||'|'||(payment_proof_path like 'proofs/rentals/%')||'|'||(payment_expires_at is null) from rental_bookings where customer_name = 'Fe Cruz'") === "gcash|for_verification|true|true", "booking switched from online to GCash: receipt saved, waiting for staff, no 30-minute release");
+  await until(() => textsTo("09170000001", /New booking .* Fe Cruz/).length === 1, "staff alert after switch");
+  assert(true, "staff get the 'check the GCash' text for the switched booking");
 
   // ---------- staff calendar ----------
   await admin.getByRole("tab", { name: "calendar" }).click();
