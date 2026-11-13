@@ -2,6 +2,8 @@
 import Link from "next/link";
 import { StoreHeader } from "./Header";
 import { InstallPrompt } from "@/components/InstallPrompt";
+import { useEffect, useState } from "react";
+import { getSupabase } from "@/lib/supabase/client";
 import { Badge } from "@/components/ui";
 import { useCart } from "@/lib/cart";
 import { formatClock } from "@/lib/hours";
@@ -17,6 +19,7 @@ export function HomeChooser() {
   const bay = brandOf(settings, "baybayin");
   const t = welcomeTexts(settings);
   const rs = useRentalSettings();
+  const firstName = useFirstName();
 
   const cafeStatus = !settings
     ? null
@@ -31,7 +34,7 @@ export function HomeChooser() {
       <StoreHeader settings={settings} open={open} brand="site" />
       <main className="mx-auto max-w-2xl px-4 py-6 sm:py-10">
         <h1 data-testid="welcome-title" className="font-display text-3xl font-bold leading-tight sm:text-4xl">
-          {t.title}
+          {firstName ? `Welcome, ${firstName}!` : t.title}
         </h1>
         {t.subtitle && (
           <p data-testid="welcome-subtitle" className="mt-1 text-lg text-coffee-700">
@@ -96,4 +99,26 @@ export function HomeChooser() {
       </main>
     </div>
   );
+}
+
+/** First name of the signed-in person (from their profile, else sign-up details); null when signed out. */
+function useFirstName(): string | null {
+  const [name, setName] = useState<string | null>(null);
+  useEffect(() => {
+    const db = getSupabase();
+    let active = true;
+    const load = async (uid: string | null, meta?: Record<string, unknown>) => {
+      if (!uid) return active && setName(null);
+      const { data } = await db.from("users").select("full_name").eq("id", uid).maybeSingle();
+      const full = ((data?.full_name as string | null) || (meta?.full_name as string | undefined) || "").trim();
+      if (active) setName(full ? full.split(/\s+/)[0] : null);
+    };
+    db.auth.getUser().then(({ data }) => load(data.user?.id ?? null, data.user?.user_metadata));
+    const { data: sub } = db.auth.onAuthStateChange((_e, session) => load(session?.user?.id ?? null, session?.user?.user_metadata));
+    return () => {
+      active = false;
+      sub.subscription.unsubscribe();
+    };
+  }, []);
+  return name;
 }
