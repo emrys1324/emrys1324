@@ -205,15 +205,31 @@ export function BookingStatusScreen({ token }: { token: string }) {
                 <dd data-testid="balance">{formatPeso(Number(b.total) - Number(b.deposit_amount))}</dd>
               </div>
             )}
+            {Number(b.security_deposit) > 0 && b.status !== "cancelled" && b.status !== "returned" && (
+              <>
+                <div className="flex justify-between">
+                  <dt>
+                    Security deposit at pickup <span className="text-coffee-600">(returnable)</span>
+                  </dt>
+                  <dd>{formatPeso(b.security_deposit)}</dd>
+                </div>
+                <div className="flex justify-between border-t border-coffee-100 pt-1 font-bold">
+                  <dt>To bring at pickup</dt>
+                  <dd data-testid="due-at-pickup">{formatPeso(Number(b.total) - Number(b.deposit_amount) + Number(b.security_deposit))}</dd>
+                </div>
+              </>
+            )}
           </dl>
           {Number(b.security_deposit) > 0 && b.status !== "cancelled" && b.status !== "returned" && (
             <p className="rounded-xl bg-amber-50 px-3 py-2 text-amber-900">
-              Bring a {formatPeso(b.security_deposit)} security deposit at pickup{rs?.security_deposit_note ? ` (${rs.security_deposit_note})` : ""} — returned when the scooter comes back in good condition.
+              The {formatPeso(b.security_deposit)} security deposit{rs?.security_deposit_note ? ` (${rs.security_deposit_note})` : ""} is returned when the scooter comes back in good condition.
             </p>
           )}
           {b.status !== "cancelled" && b.status !== "returned" && <p className="text-coffee-700">Bring your driver&apos;s license when you pick up the scooter.</p>}
         </section>
-        <p className="text-center text-sm text-coffee-700">Save this page — it&apos;s your booking link.</p>
+        <p className="text-center text-sm font-semibold text-coffee-800" data-testid="screenshot-note">
+          📸 Take a screenshot of this page and present it upon pickup.
+        </p>
         <Link href="/" className="btn-secondary w-full">
           Back to home
         </Link>

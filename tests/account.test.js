@@ -72,6 +72,101 @@ const assert = (c, m) => {
   await page.waitForFunction(() => /Hi, Lea!|Check your email/.test(document.body.innerText), null, { timeout: 10000 });
   assert(sql("select count(*) from auth.users where email = 'lea.test@example.com'") === "1", "signing up with an email still works as before");
 
+  // ---- forgot password (email account): reset link by email → choose a new password
+  const lea2 = page; // still signed in as Lea Email (or waiting for confirmation) — sign out first
+  await lea2.goto(BASE + "/account");
+  await lea2.waitForFunction(() => /Hi, Lea!|Forgot password\?/.test(document.body.innerText));
+  if (await lea2.getByRole("button", { name: "Sign out" }).count()) {
+    await lea2.getByRole("button", { name: "Sign out" }).click();
+    await lea2.waitForURL(BASE + "/");
+    await lea2.goto(BASE + "/account");
+  }
+  await fetch("http://127.0.0.1:54324/api/v1/messages", { method: "DELETE" });
+  await page.getByRole("button", { name: "Forgot password?" }).click();
+  await page.getByTestId("forgot-password").waitFor();
+  await page.locator("#reset-id").fill("lea.test@example.com");
+  await page.getByRole("button", { name: "Reset password" }).click();
+  await page.getByText("we've sent a link to set a new password").waitFor();
+  let link = null;
+  for (let i = 0; i < 40 && !link; i++) {
+    const list = await (await fetch("http://127.0.0.1:54324/api/v1/messages")).json();
+    const m = list.messages?.find((x) => x.To?.some((t) => t.Address === "lea.test@example.com"));
+    if (m) {
+      const full = await (await fetch(`http://127.0.0.1:54324/api/v1/message/${m.ID}`)).json();
+      link = ((full.HTML || full.Text || "").match(/https?:\/\/[^"'\s<>]+verify[^"'\s<>]+/) || [])[0]?.replace(/&amp;/g, "&");
+    }
+    if (!link) await new Promise((r) => setTimeout(r, 250));
+  }
+  assert(!!link, "Forgot password? sends a reset email to an email account");
+  await page.goto(link);
+  await page.getByRole("heading", { name: "Choose a new password" }).waitFor();
+  await page.locator("#new-password").fill("Bagong-pass-2026");
+  await page.locator("#confirm-password").fill("Bagong-pass-2026");
+  await page.getByRole("button", { name: "Save password and continue" }).click();
+  await page.waitForURL(BASE + "/account");
+  await page.getByRole("heading", { name: "Hi, Lea!" }).waitFor();
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await page.waitForURL(BASE + "/");
+  await page.goto(BASE + "/account");
+  await page.locator("#a-email").fill("lea.test@example.com");
+  await page.locator("#a-pass").fill("Bagong-pass-2026");
+  await page.getByRole("button", { name: "Sign in", exact: true }).last().click();
+  await page.getByRole("heading", { name: "Hi, Lea!" }).waitFor();
+  assert(true, "the reset link lets the customer choose a new password and sign in with it");
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await page.waitForURL(BASE + "/");
+
+  // ---- forgot password (mobile-number account): reset by the café
+  await page.goto(BASE + "/account");
+  await page.getByRole("button", { name: "Forgot password?" }).click();
+  await page.locator("#reset-id").fill("09175550101");
+  await page.getByRole("button", { name: "Reset password" }).click();
+  await page.getByTestId("phone-reset-help").waitFor();
+  assert((await page.getByTestId("phone-reset-help").textContent()).includes("temporary password"), "mobile-number accounts are told the café can give them a temporary password");
+
+  // ---- admin resets it: temporary password → customer signs in → changes it
+  const admin = await (await browser.newContext(devices["iPad (gen 7) landscape"])).newPage();
+  admin.on("dialog", (d) => d.accept());
+  await admin.goto(BASE + "/login");
+  await admin.fill("#email", "admin@pahuway.cafe");
+  await admin.fill("#password", "ChangeMe-Admin-2026");
+  await admin.click("button:has-text('Sign in')");
+  await admin.waitForURL(BASE + "/admin");
+  await admin.goto(BASE + "/admin/settings");
+  const box = admin.getByTestId("customer-password-reset");
+  await box.locator("#cust-reset-phone").fill("09179999999");
+  await box.getByRole("button", { name: "Reset password" }).click();
+  await box.getByText("No customer account signs in with 09179999999").waitFor();
+  await box.locator("#cust-reset-phone").fill("0917 555 0101");
+  await box.getByRole("button", { name: "Reset password" }).click();
+  const temp = (await box.getByTestId("temp-password").textContent()).trim();
+  assert(/^[a-z2-9]{4}-[a-z2-9]{4}-[a-z2-9]{4}$/.test(temp), `admin gets a temporary password for the customer (${temp})`);
+  await page.goto(BASE + "/account");
+  await page.locator("#a-email").fill("09175550101");
+  await page.locator("#a-pass").fill("Kape-sa-umaga-1");
+  await page.getByRole("button", { name: "Sign in", exact: true }).last().click();
+  await page.getByText("Wrong mobile number or password.").waitFor();
+  await page.locator("#a-pass").fill(temp);
+  await page.getByRole("button", { name: "Sign in", exact: true }).last().click();
+  await page.getByRole("heading", { name: "Hi, Lea!" }).waitFor();
+  assert(true, "the old password stops working; the customer signs in with the temporary one");
+  const cp = page.getByTestId("change-password");
+  await cp.locator("#cp-new").fill("Sariling-pass-99");
+  await cp.locator("#cp-again").fill("Sariling-pass-98");
+  await cp.getByRole("button", { name: "Change password" }).click();
+  await cp.getByText("The two passwords don't match.").waitFor();
+  await cp.locator("#cp-again").fill("Sariling-pass-99");
+  await cp.getByRole("button", { name: "Change password" }).click();
+  await cp.getByText("Password changed.").waitFor();
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await page.waitForURL(BASE + "/");
+  await page.goto(BASE + "/account");
+  await page.locator("#a-email").fill("09175550101");
+  await page.locator("#a-pass").fill("Sariling-pass-99");
+  await page.getByRole("button", { name: "Sign in", exact: true }).last().click();
+  await page.getByRole("heading", { name: "Hi, Lea!" }).waitFor();
+  assert(true, "the customer changes the temporary password in their account and signs in with the new one");
+
   // ---- the server route refuses bad input
   const r = await fetch(BASE + "/api/account/signup", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "X", phone: "123", password: "x" }) });
   assert(r.status === 400, "sign-up route checks name, mobile number and password");

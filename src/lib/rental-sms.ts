@@ -65,7 +65,7 @@ export function bookingMessage(kind: SmsKind, b: Row, c: Awaited<ReturnType<type
         ? `${c.brand}: Your ${peso(b.deposit_amount)} deposit for ${b.booking_number} has been sent back to your GCash.`
         : `${c.brand}: Your ${peso(b.deposit_amount)} deposit for ${b.booking_number} has been refunded. It may take a few days to reach your account.`;
     case "staff_alert":
-      return `${c.brand}: New booking ${b.booking_number} - ${b.customer_name} ${b.customer_phone}, ${b.scooter_name}, ${when(b.pickup_at)} to ${when(b.return_at)}${b.delivery ? `, DELIVERY to ${b.delivery_address}` : ""}. ${b.payment_status === "for_verification" ? `GCash deposit ${peso(b.deposit_amount)} ref ${b.gcash_reference} - please check.` : `Deposit ${peso(b.deposit_amount)} paid.`}`;
+      return `${c.brand}: New booking ${b.booking_number} - ${b.customer_name} ${b.customer_phone}, ${b.scooter_name}, ${when(b.pickup_at)} to ${when(b.return_at)}${b.delivery ? `, DELIVERY to ${b.delivery_address}` : ""}. ${b.payment_status === "for_verification" ? `GCash deposit ${peso(b.deposit_amount)}${b.gcash_reference ? ` ref ${b.gcash_reference}` : ""} - please check the receipt.` : `Deposit ${peso(b.deposit_amount)} paid.`}`;
   }
 }
 

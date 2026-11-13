@@ -317,7 +317,12 @@ function BookingSheet({ booking: b, onClose, onChanged }: { booking: Booking | n
               <div className="mt-4" data-testid="gcash-proof">
                 <p className="label">GCash deposit</p>
                 <p className="text-sm">
-                  Reference <strong className="font-mono">{b.gcash_reference}</strong> · should be <strong>{formatPeso(b.deposit_amount)}</strong>
+                  {b.gcash_reference && (
+                    <>
+                      Reference <strong className="font-mono">{b.gcash_reference}</strong> ·{" "}
+                    </>
+                  )}
+                  Should be <strong>{formatPeso(b.deposit_amount)}</strong>
                 </p>
                 {proof ? (
                   <a href={proof} target="_blank" rel="noreferrer">
@@ -327,7 +332,7 @@ function BookingSheet({ booking: b, onClose, onChanged }: { booking: Booking | n
                 ) : (
                   <p className="text-sm text-coffee-600">{b.payment_proof_path ? "Loading…" : "No screenshot."}</p>
                 )}
-                <p className="hint">Check the reference and amount in your GCash app before verifying.</p>
+                <p className="hint">Check the amount and the reference on the receipt against your GCash app before verifying.</p>
               </div>
             )}
           </div>

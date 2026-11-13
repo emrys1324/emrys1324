@@ -9,6 +9,7 @@ import { BackgroundLayer } from "@/components/BrandBackground";
 import { DEFAULT_STAFF_HEADER, headerTheme, isHex } from "@/lib/color";
 import type { StoreSettings } from "@/lib/types";
 import { TeamSection } from "./TeamAdmin";
+import { CustomerPasswordReset } from "./CustomerPasswordReset";
 import { useStaffAccess } from "./StaffAccess";
 
 export function SettingsAdmin() {
@@ -210,6 +211,7 @@ export function SettingsAdmin() {
       </form>
 
       {isAdmin && <TeamSection />}
+      {isAdmin && <CustomerPasswordReset />}
     </div>
   );
 }

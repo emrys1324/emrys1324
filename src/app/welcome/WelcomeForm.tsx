@@ -23,12 +23,18 @@ export function WelcomeForm() {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
+  const [isReset, setIsReset] = useState(false);
 
   useEffect(() => {
     const supabase = getSupabase();
-    const expired = "This link has expired or was already used. Ask the café admin to send you a new one.";
+    const url0 = new URL(window.location.href);
+    const reset = url0.searchParams.get("reset") === "1";
+    setIsReset(reset);
+    const expired = reset
+      ? "This reset link has expired or was already used. Request a new one from the sign-in page."
+      : "This link has expired or was already used. Ask the café admin to send you a new one.";
     (async () => {
-      const url = new URL(window.location.href);
+      const url = url0;
       const hash = new URLSearchParams(url.hash.replace(/^#/, ""));
       const q = url.searchParams;
       try {
@@ -86,16 +92,24 @@ export function WelcomeForm() {
         <div className="card space-y-4 p-6">
           <h1 className="font-display text-2xl font-bold">Link problem</h1>
           <Alert>{error}</Alert>
-          <Link href="/login" className="btn-secondary w-full">
+          <Link href={isReset ? "/account" : "/login"} className="btn-secondary w-full">
             Go to sign in
           </Link>
         </div>
       ) : (
         <form onSubmit={submit} className="card space-y-4 p-6">
           <div>
-            <h1 className="font-display text-2xl font-bold">{first ? `Welcome, ${first}!` : "Welcome!"}</h1>
+            <h1 className="font-display text-2xl font-bold">{isReset ? "Choose a new password" : first ? `Welcome, ${first}!` : "Welcome!"}</h1>
             <p className="text-sm text-coffee-700">
-              Set a password for <strong>{email}</strong>. You&apos;ll use it to sign in at <span className="font-mono">/login</span>.
+              {isReset || profile?.role === "customer" ? (
+                <>
+                  Set a new password for <strong>{email}</strong>.
+                </>
+              ) : (
+                <>
+                  Set a password for <strong>{email}</strong>. You&apos;ll use it to sign in at <span className="font-mono">/login</span>.
+                </>
+              )}
             </p>
           </div>
           {error && <Alert>{error}</Alert>}

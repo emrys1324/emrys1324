@@ -59,6 +59,9 @@ function AuthForms() {
   const [password, setPassword] = useState("");
   const [msg, setMsg] = useState<{ tone: "red" | "green"; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [forgot, setForgot] = useState(false);
+
+  if (forgot) return <ForgotPassword initial={email} onBack={() => setForgot(false)} />;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -166,6 +169,11 @@ function AuthForms() {
         <button className="btn-primary w-full" disabled={busy}>
           {busy ? <Spinner /> : mode === "signin" ? "Sign in" : "Create account"}
         </button>
+        {mode === "signin" && (
+          <button type="button" className="w-full text-center text-sm font-semibold text-coffee-700 underline underline-offset-2" onClick={() => setForgot(true)}>
+            Forgot password?
+          </button>
+        )}
       </form>
       <p className="text-center text-sm text-coffee-600">
         Staff or rider?{" "}
@@ -174,6 +182,114 @@ function AuthForms() {
         </Link>
       </p>
     </div>
+  );
+}
+
+/** "Forgot password?": email accounts get a reset link; mobile-number accounts are reset by the café. */
+function ForgotPassword({ initial, onBack }: { initial: string; onBack: () => void }) {
+  const { settings } = useStoreSettings();
+  const [id, setId] = useState(initial);
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState<"email" | "phone" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    const v = id.trim();
+    if (!v.includes("@")) {
+      if (!normalizePhone(v)) return setError("Enter your email, or your mobile number as 09XXXXXXXXX.");
+      return setDone("phone");
+    }
+    if (!/^\S+@\S+\.\S+$/.test(v)) return setError("Please check your email address.");
+    setBusy(true);
+    const { error } = await getSupabase().auth.resetPasswordForEmail(v, { redirectTo: `${window.location.origin}/welcome?reset=1` });
+    setBusy(false);
+    if (error && /rate limit|too many/i.test(error.message)) return setError("Too many reset emails were sent just now. Please try again in an hour, or contact the café.");
+    if (error) return setError("We couldn't send the reset email. Please try again.");
+    setDone("email");
+  };
+  return (
+    <div className="space-y-4">
+      <div>
+        <h1 className="font-display text-2xl font-bold">Reset your password</h1>
+        <p className="text-coffee-700">Enter the email or mobile number you sign in with.</p>
+      </div>
+      <form onSubmit={submit} className="card space-y-4 p-5" data-testid="forgot-password">
+        {error && <Alert>{error}</Alert>}
+        {done === "email" ? (
+          <Alert tone="green">If an account uses that email, we&apos;ve sent a link to set a new password. Check your inbox (and spam folder) — the link works once.</Alert>
+        ) : done === "phone" ? (
+          <div className="space-y-2 rounded-2xl bg-sky-50 p-4 text-sm text-sky-950" data-testid="phone-reset-help">
+            <p className="font-semibold">Accounts without an email are reset by the café.</p>
+            <p>Message or call us with your name and mobile number. Our staff will give you a temporary password — sign in with it, then change it in your account.</p>
+            {settings?.contact_phone && (
+              <a href={`tel:${settings.contact_phone}`} className="btn-secondary w-full">
+                📞 Call or text {settings.contact_phone}
+              </a>
+            )}
+          </div>
+        ) : (
+          <>
+            <div>
+              <label className="label" htmlFor="reset-id">
+                Email or mobile number
+              </label>
+              <input id="reset-id" className="input" autoComplete="username" value={id} onChange={(e) => setId(e.target.value)} placeholder="you@example.com or 09XXXXXXXXX" />
+            </div>
+            <button className="btn-primary w-full" disabled={busy}>
+              {busy ? <Spinner /> : "Reset password"}
+            </button>
+          </>
+        )}
+      </form>
+      <button type="button" className="btn-ghost w-full" onClick={onBack}>
+        ← Back to sign in
+      </button>
+    </div>
+  );
+}
+
+/** Change password while signed in (e.g. after the café gave a temporary one). */
+function ChangePassword() {
+  const [pw, setPw] = useState("");
+  const [pw2, setPw2] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ tone: "red" | "green"; text: string } | null>(null);
+  const save = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setMsg(null);
+    if (pw.length < 8) return setMsg({ tone: "red", text: "Use at least 8 characters." });
+    if (pw !== pw2) return setMsg({ tone: "red", text: "The two passwords don't match." });
+    setBusy(true);
+    const { error } = await getSupabase().auth.updateUser({ password: pw });
+    setBusy(false);
+    if (error) return setMsg({ tone: "red", text: /different from the old/i.test(error.message) ? "Choose a password you haven't used before." : error.message });
+    setPw("");
+    setPw2("");
+    setMsg({ tone: "green", text: "Password changed." });
+  };
+  return (
+    <form onSubmit={save} className="card space-y-3 p-5" data-testid="change-password">
+      <h2 className="section-title">Change password</h2>
+      {msg && <Alert tone={msg.tone}>{msg.text}</Alert>}
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div>
+          <label className="label" htmlFor="cp-new">
+            New password
+          </label>
+          <input id="cp-new" type="password" autoComplete="new-password" className="input" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="8+ characters" />
+        </div>
+        <div>
+          <label className="label" htmlFor="cp-again">
+            Type it again
+          </label>
+          <input id="cp-again" type="password" autoComplete="new-password" className="input" value={pw2} onChange={(e) => setPw2(e.target.value)} />
+        </div>
+      </div>
+      <button className="btn-secondary" disabled={busy}>
+        {busy ? <Spinner /> : "Change password"}
+      </button>
+    </form>
   );
 }
 
@@ -328,6 +444,7 @@ function Profile({ user }: { user: User }) {
         )}
       </section>
 
+      <ChangePassword />
       <DeleteAccount />
       <p className="text-center text-sm">
         <Link href="/privacy" className="text-coffee-700 underline">
