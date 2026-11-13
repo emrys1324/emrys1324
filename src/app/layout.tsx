@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { CartProvider } from "@/lib/cart";
 import { NativeBridge } from "@/components/NativeBridge";
+import { ServiceWorkerRegister } from "@/components/InstallPrompt";
 import { BrandBackground } from "@/components/BrandBackground";
 import { StoreSettingsProvider } from "@/lib/store-settings";
 import { getSiteIcons } from "@/lib/site-icons";
@@ -9,7 +10,8 @@ import { getSiteIcons } from "@/lib/site-icons";
 const BASE_METADATA: Metadata = {
   title: "Pahuway Cafe — Order online",
   description: "Specialty coffee in San Agustin, Romblon. Order for pickup, dine-in or delivery.",
-  appleWebApp: { title: "Isla", statusBarStyle: "default" },
+  appleWebApp: { capable: true, title: "Padaya", statusBarStyle: "default" },
+  applicationName: "Padaya",
 };
 
 /** Browser-tab and home-screen icons: the one uploaded in Settings → Branding, else the bundled ones. */
@@ -41,6 +43,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body>
         <NativeBridge />
+        <ServiceWorkerRegister />
         <StoreSettingsProvider>
           <BrandBackground />
           <CartProvider>{children}</CartProvider>

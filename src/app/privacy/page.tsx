@@ -24,7 +24,7 @@ export default async function PrivacyPage() {
       </Link>
       <article className="card mt-4 space-y-4 p-6 leading-relaxed [&_h2]:mt-6 [&_h2]:font-display [&_h2]:text-xl [&_h2]:font-bold [&_li]:ml-5 [&_li]:list-disc">
         <h1 className="font-display text-3xl font-bold">Privacy policy</h1>
-        <p className="text-sm text-coffee-600">Applies to the {name} website and the Isla mobile app. Last updated: November 2026.</p>
+        <p className="text-sm text-coffee-600">Applies to the {name} website and the Padaya home-screen app. Last updated: November 2026.</p>
 
         <p>
           {name} (&quot;we&quot;) is a café in San Agustin, Romblon, Philippines. We collect only what we need to prepare and deliver your order, and we

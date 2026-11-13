@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { StoreHeader } from "./Header";
+import { InstallPrompt } from "@/components/InstallPrompt";
 import { Badge } from "@/components/ui";
 import { useCart } from "@/lib/cart";
 import { formatClock } from "@/lib/hours";
@@ -89,6 +90,9 @@ export function HomeChooser() {
             </Link>
           </li>
         </ul>
+        <div className="mt-5">
+          <InstallPrompt />
+        </div>
       </main>
     </div>
   );
