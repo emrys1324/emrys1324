@@ -11,6 +11,7 @@ const { execFileSync } = require("child_process");
 const path = require("path");
 const { startMockSemaphore } = require("./mock-semaphore");
 const { startMockHitpay } = require("./mock-hitpay");
+const yamCard = (pg) => pg.getByTestId("scooter-option").filter({ hasText: "Yamaha Mio" });
 const BASE = process.env.BASE_URL || "http://localhost:3000";
 const F = (n) => path.join(__dirname, "fixtures", n);
 const sql = (q) => execFileSync("docker", ["exec", "-i", "supabase_db_pahuway-cafe", "psql", "-U", "postgres", "-Atc", q]).toString().trim();
@@ -60,7 +61,7 @@ async function payGcash(page) {
   const manual = page.getByRole("radio", { name: /GCash \(send manually\)/ });
   if (await manual.count()) await manual.click();
   await page.setInputFiles("input[aria-label='GCash payment screenshot']", F("test-logo.png"));
-  await page.getByRole("button", { name: /^Book & send ₱[\d,]+ deposit$/ }).click();
+  await page.getByRole("button", { name: /^Book & send ₱[\d,]+$/ }).click();
   await page.waitForURL(/\/baybayin\/booking\/[0-9a-f-]{36}$/);
   await page.getByTestId("booking-number").waitFor();
   return (await page.getByTestId("booking-number").textContent()).trim();
@@ -99,6 +100,7 @@ async function payGcash(page) {
     await admin.locator("#scooter-name").fill(n);
     await admin.locator("#scooter-desc").fill(desc);
     await admin.locator("#scooter-rate").fill(rate);
+    if (n === "Yamaha Mio") await admin.locator("#scooter-security").fill("1000");
     if (n === "Honda Click 125") {
       await admin.setInputFiles("input[aria-label='Scooter photo']", F("test-logo.png"));
       await admin.getByRole("dialog").getByText("Change photo").waitFor();
@@ -162,7 +164,7 @@ async function payGcash(page) {
   await cust.getByLabel("I have read and agree to the terms and conditions").check();
   await cust.getByTestId("gcash-payment").waitFor();
   assert((await cust.getByTestId("gcash-amount").textContent()) === "₱300" && (await cust.getByTestId("gcash-payment").textContent()).includes("0917 555 0000"), "after agreeing, the GCash form shows the café's GCash and the ₱300 deposit to send");
-  await cust.getByRole("button", { name: "Book & send ₱300 deposit" }).click();
+  await cust.getByRole("button", { name: "Book & send ₱300" }).click();
   await cust.getByText("Please attach a screenshot of your GCash payment.").waitFor();
   assert((await cust.locator("#gcash-ref").count()) === 0, "GCash: only the payment screenshot is required (no reference number field)");
   const bookingNo = await payGcash(cust);
@@ -172,7 +174,7 @@ async function payGcash(page) {
   assert(row1 === "awaiting_deposit|for_verification|gcash|-|true|true|true|false", `booking saved for GCash checking, receipt stored privately, terms copy kept, pickup only (${row1})`);
   await until(() => textsTo("09170000001", /New booking/).length === 1, "staff alert");
   const alert = textsTo("09170000001", /New booking/)[0].message;
-  assert(alert.includes(bookingNo) && alert.includes("Ana Reyes 09171112222") && alert.includes("GCash deposit P300 - please check the receipt"), `staff get a "check the GCash" text: "${alert}"`);
+  assert(alert.includes(bookingNo) && alert.includes("Ana Reyes 09171112222") && alert.includes("GCash P300 - please check the receipt"), `staff get a "check the GCash" text: "${alert}"`);
   assert(textsTo("09171112222").length === 0, "no confirmation text to the customer before staff verify");
 
   // ---------- availability calendar + no double booking ----------
@@ -192,10 +194,12 @@ async function payGcash(page) {
   await cust2.getByRole("radio", { name: "Honda Click 125", exact: true }).click();
   assert((await cal.locator(`[data-day="${mid}"]`).getAttribute("data-tone")) === "booked", "with Honda chosen, its booked days are greyed out");
   await setTimes(cust2, ymd(7), "09:00", ymd(8), "10:30");
-  await cust2.getByTestId("rental-days").getByText("2 days").waitFor();
-  await setTimes(cust2, ymd(7), "09:00", ymd(8), "09:30");
-  await cust2.getByTestId("rental-days").getByText("1 day").waitFor();
-  assert(true, "24-hour blocks: 25.5 h = 2 days, 24.5 h = 1 day (60-min grace)");
+  await cust2.getByTestId("rental-days").getByText("1 day + 2 hours").waitFor();
+  await setTimes(cust2, ymd(7), "09:00", ymd(8), "15:00");
+  await cust2.getByTestId("rental-days").getByText("1 day + 6 hours").waitFor();
+  await setTimes(cust2, ymd(7), "09:00", ymd(8), "16:00");
+  await cust2.getByTestId("rental-days").getByText("2 days", { exact: true }).waitFor();
+  assert(true, "pricing: 25.5 h = 1 day + 2 extra hours (part of an hour counts), 30 h = 1 day + 6 hours, 31 h = 2 days (7 extra hours = a day)");
 
   // ---------- staff verify the GCash receipt ----------
   await admin.getByRole("tab", { name: "bookings" }).click();
@@ -284,6 +288,22 @@ async function payGcash(page) {
   assert(true, "customer's booking page shows cancelled + deposit sent back");
   await admin.keyboard.press("Escape");
 
+  // ---------- extra hours + per-scooter security deposit paid now ----------
+  const cust7 = await (await browser.newContext(phone)).newPage();
+  await book(cust7, { scooter: "Yamaha Mio", start: ymd(50), end: ymd(51), startTime: "09:00", endTime: "12:00", name: "Gio Tan", phone: "09251234567" });
+  await cust7.getByTestId("excess-hours").waitFor();
+  const sum7 = await cust7.getByTestId("rental-summary").textContent();
+  assert((await cust7.getByTestId("excess-hours").textContent()).includes("Extra 3 hours × ₱50") && sum7.includes("₱550"), "27 h: 1 day ₱400 + 3 extra hours × ₱50 = ₱550 total");
+  assert((await yamCard(cust7).textContent()).includes("₱1,000 security deposit"), "the scooter card shows its own security deposit (Yamaha ₱1,000)");
+  assert((await cust7.getByTestId("pay-now").textContent()).includes("₱165") && (await cust7.getByTestId("security-deposit").textContent()).includes("₱1,000") && (await cust7.getByTestId("due-at-pickup").textContent()).includes("₱1,385"), "unticked (default): pay ₱165 now; security ₱1,000 added to the balance at pickup (₱385 + ₱1,000 = ₱1,385)");
+  await cust7.getByLabel(/Pay the ₱1,000 security deposit now/).check();
+  assert((await cust7.getByTestId("pay-now").textContent()).includes("₱1,165") && (await cust7.getByTestId("due-at-pickup").textContent()).includes("₱385") && (await cust7.getByTestId("security-deposit").count()) === 0, "ticked: pay ₱165 + ₱1,000 = ₱1,165 now; only the ₱385 rental balance at pickup");
+  await cust7.getByLabel("I have read and agree to the terms and conditions").check();
+  assert((await cust7.getByTestId("gcash-amount").textContent()) === "₱1,165", "the GCash form asks for the ₱1,165 (deposit + security deposit)");
+  const no7 = await payGcash(cust7);
+  assert(sql(`select days||'|'||excess_hours||'|'||excess_fee||'|'||total||'|'||security_deposit||'|'||security_upfront||'|'||pay_now from rental_bookings where booking_number='${no7}'`) === "1|3|150.00|550.00|1000.00|true|1165.00", "saved: 1 day + 3 h (₱150), total ₱550, security ₱1,000 paid upfront, ₱1,165 paid now");
+  assert((await cust7.getByTestId("paid-now").textContent()) === "₱1,165" && (await cust7.getByTestId("due-at-pickup").textContent()) === "₱385", "booking page: ₱1,165 sent; ₱385 balance at pickup");
+
   // ---------- online deposit (HitPay) ----------
   assert((await cust3.getByRole("radio", { name: /Pay online/ }).count()) === 0, "with online deposit off, customers only see the GCash receipt option");
   await admin.getByRole("tab", { name: "settings" }).click();
@@ -300,7 +320,7 @@ async function payGcash(page) {
   await cust5.getByRole("radio", { name: /GCash \(send manually\)/ }).click();
   await cust5.getByTestId("gcash-payment").waitFor();
   await cust5.getByRole("radio", { name: /Pay online/ }).click();
-  await cust5.getByRole("button", { name: "Pay ₱150 deposit online" }).click();
+  await cust5.getByRole("button", { name: "Pay ₱150 online" }).click();
   await cust5.waitForURL(/127\.0\.0\.1:4010\/checkout\/pr_\d+/);
   assert((await cust5.locator("#amount").textContent()) === "PHP 150.00", "customer goes to HitPay for exactly the ₱150 deposit (1 day × ₱500 × 30%)");
   const no5 = await cust5.locator("#ref").textContent();
@@ -319,14 +339,14 @@ async function payGcash(page) {
   await sheet.getByRole("button", { name: "Cancel this booking…" }).click();
   await sheet.getByRole("button", { name: "Customer cancelled" }).click();
   await sheet.getByRole("button", { name: "Cancel booking" }).click();
-  await sheet.getByRole("button", { name: "Refund ₱150 deposit" }).click();
+  await sheet.getByRole("button", { name: "Refund ₱150 payment" }).click();
   await until(() => sql(`select payment_status from rental_bookings where booking_number='${no5}'`) === "refunded", "online refund");
   assert(hp.refunds.some((r) => r.amount === "150.00"), "cancelling an online booking refunds the deposit through HitPay");
   await admin.keyboard.press("Escape");
   const cust6 = await (await browser.newContext(phone)).newPage();
   await book(cust6, { scooter: "Yamaha Mio", start: ymd(40), end: ymd(41), name: "Fe Cruz", phone: "09221234567" });
   await cust6.getByLabel("I have read and agree to the terms and conditions").check();
-  await cust6.getByRole("button", { name: "Pay ₱120 deposit online" }).click();
+  await cust6.getByRole("button", { name: "Pay ₱120 online" }).click();
   await cust6.waitForURL(/127\.0\.0\.1:4010\/checkout\/(pr_\d+)/);
   const pr6 = cust6.url().split("/").pop();
   await cust6.getByRole("link", { name: "Back to merchant" }).click();

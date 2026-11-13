@@ -30,6 +30,10 @@ interface Booking {
   total: number;
   deposit_amount: number;
   security_deposit: number;
+  security_upfront: boolean;
+  pay_now: number | null;
+  excess_hours: number;
+  excess_fee: number;
   license_path: string;
   notes: string | null;
   status: BookingStatus;
@@ -222,11 +226,11 @@ function BookingSheet({ booking: b, onClose, onChanged }: { booking: Booking | n
   };
   const verifyGcash = () => update("Deposit verified", { status: "confirmed", payment_status: "deposit_paid" });
   const markRefunded = () => {
-    if (!confirm(`Mark the ${formatPeso(b.deposit_amount)} deposit for ${b.booking_number} as sent back to the customer by GCash?`)) return;
+    if (!confirm(`Mark the ${formatPeso(b.pay_now ?? b.deposit_amount)} payment for ${b.booking_number} as sent back to the customer by GCash?`)) return;
     update("Mark deposit refunded", { payment_status: "refunded" });
   };
   const refund = async () => {
-    if (!confirm(`Refund the ${formatPeso(b.deposit_amount)} deposit for ${b.booking_number} through HitPay?`)) return;
+    if (!confirm(`Refund the ${formatPeso(b.pay_now ?? b.deposit_amount)} payment for ${b.booking_number} through HitPay?`)) return;
     setBusy("refund");
     setError(null);
     const res = await fetch("/api/rentals/refund", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ booking_id: b.id }) });
@@ -273,22 +277,30 @@ function BookingSheet({ booking: b, onClose, onChanged }: { booking: Booking | n
             <dl className="space-y-0.5 border-t border-coffee-100 pt-2">
               <div className="flex justify-between">
                 <dt>
-                  {b.days} × {formatPeso(b.daily_rate)}
+                  {b.days} day{b.days === 1 ? "" : "s"} × {formatPeso(b.daily_rate)}
+                  {Number(b.excess_hours) > 0 ? ` + ${b.excess_hours} h × ${formatPeso(Number(b.excess_fee) / Number(b.excess_hours))}` : ""}
                   {b.delivery ? ` + delivery ${formatPeso(b.delivery_fee)}` : ""}
                 </dt>
                 <dd className="font-bold">{formatPeso(b.total)}</dd>
               </div>
               <div className="flex justify-between">
-                <dt>Deposit ({b.payment_method === "gcash" ? "GCash" : "online"})</dt>
-                <dd>{formatPeso(b.deposit_amount)}</dd>
+                <dt>
+                  {b.security_upfront ? "Deposit + security deposit" : "Deposit"} ({b.payment_method === "gcash" ? "GCash" : "online"})
+                </dt>
+                <dd>{formatPeso(b.pay_now ?? b.deposit_amount)}</dd>
               </div>
               <div className="flex justify-between font-semibold">
-                <dt>Collect at pickup</dt>
-                <dd data-testid="collect-at-pickup">{formatPeso(b.payment_status === "paid" ? 0 : Number(b.total) - (paid || b.payment_status === "for_verification" ? Number(b.deposit_amount) : 0))}</dd>
+                <dt>Collect at pickup{Number(b.security_deposit) > 0 && !b.security_upfront ? " (incl. security deposit)" : ""}</dt>
+                <dd data-testid="collect-at-pickup">
+                  {formatPeso(
+                    (b.payment_status === "paid" ? 0 : Number(b.total) - (paid || b.payment_status === "for_verification" ? Number(b.deposit_amount) : 0)) +
+                      (b.security_upfront ? 0 : Number(b.security_deposit)),
+                  )}
+                </dd>
               </div>
               {Number(b.security_deposit) > 0 && (
-                <div className="flex justify-between">
-                  <dt>+ security deposit (returnable)</dt>
+                <div className="flex justify-between text-coffee-700">
+                  <dt>Security deposit {b.security_upfront ? "(paid with the deposit — return it after the rental)" : "(returnable)"}</dt>
                   <dd>{formatPeso(b.security_deposit)}</dd>
                 </div>
               )}
@@ -322,7 +334,8 @@ function BookingSheet({ booking: b, onClose, onChanged }: { booking: Booking | n
                       Reference <strong className="font-mono">{b.gcash_reference}</strong> ·{" "}
                     </>
                   )}
-                  Should be <strong>{formatPeso(b.deposit_amount)}</strong>
+                  Should be <strong>{formatPeso(b.pay_now ?? b.deposit_amount)}</strong>
+                  {b.security_upfront ? " (deposit + security deposit)" : ""}
                 </p>
                 {proof ? (
                   <a href={proof} target="_blank" rel="noreferrer">
@@ -389,12 +402,12 @@ function BookingSheet({ booking: b, onClose, onChanged }: { booking: Booking | n
             ) : b.payment_method === "gcash" ? (
               <>
                 <p className="text-sm text-coffee-700">
-                  Send {formatPeso(b.deposit_amount)} back to {b.customer_phone} by GCash, then mark it here.
+                  Send {formatPeso(b.pay_now ?? b.deposit_amount)} back to {b.customer_phone} by GCash, then mark it here.
                 </p>
                 {btn("Mark deposit refunded", markRefunded, "btn-danger")}
               </>
             ) : (
-              btn(`Refund ${formatPeso(b.deposit_amount)} deposit`, refund, "btn-danger")
+              btn(`Refund ${formatPeso(b.pay_now ?? b.deposit_amount)} payment`, refund, "btn-danger")
             ))}
           {["awaiting_deposit", "confirmed"].includes(b.status) &&
             (cancelling ? (
@@ -527,7 +540,7 @@ function CalendarTab() {
 }
 
 // ---------------------------------------------------------------- scooters
-const EMPTY_SCOOTER = { name: "", description: "", daily_rate: "", units: "1", photo_url: null as string | null, is_active: true, sort_order: 0 };
+const EMPTY_SCOOTER = { name: "", description: "", daily_rate: "", security_deposit: "", units: "1", photo_url: null as string | null, is_active: true, sort_order: 0 };
 function ScootersTab() {
   const [list, setList] = useState<Scooter[] | null>(null);
   const [edit, setEdit] = useState<(typeof EMPTY_SCOOTER & { id?: string }) | null>(null);
@@ -547,10 +560,12 @@ function ScootersTab() {
     const rate = Number(edit.daily_rate);
     if (edit.name.trim().length < 2) return setMsg({ tone: "red", text: "Enter the scooter's name." });
     if (!(rate > 0)) return setMsg({ tone: "red", text: "Enter the daily rate in pesos." });
+    const sec = edit.security_deposit.trim() === "" ? null : Number(edit.security_deposit);
+    if (sec !== null && !(sec >= 0)) return setMsg({ tone: "red", text: "Security deposit must be an amount in pesos (or empty to use the default)." });
     const units = Number(edit.units);
     if (!Number.isInteger(units) || units < 1 || units > 50) return setMsg({ tone: "red", text: "Number of units must be a whole number from 1 to 50." });
     setBusy(true);
-    const row = { name: edit.name.trim(), description: edit.description.trim() || null, daily_rate: rate, units, photo_url: edit.photo_url, is_active: edit.is_active, sort_order: Number(edit.sort_order) || 0 };
+    const row = { name: edit.name.trim(), description: edit.description.trim() || null, daily_rate: rate, security_deposit: sec, units, photo_url: edit.photo_url, is_active: edit.is_active, sort_order: Number(edit.sort_order) || 0 };
     const { error } = edit.id ? await getSupabase().from("scooters").update(row).eq("id", edit.id) : await getSupabase().from("scooters").insert(row);
     setBusy(false);
     if (error) return setMsg({ tone: "red", text: error.message });
@@ -586,11 +601,12 @@ function ScootersTab() {
               <span className="block font-bold">{s.name}</span>
               <span className="block text-sm text-coffee-700">
                 {formatPeso(s.daily_rate)}/day · {s.units} unit{s.units === 1 ? "" : "s"}
+                {s.security_deposit != null ? ` · ${formatPeso(s.security_deposit)} security deposit` : ""}
                 {s.description ? ` · ${s.description}` : ""}
               </span>
             </span>
             {!s.is_active && <Badge tone="gray">Hidden</Badge>}
-            <button className="btn-secondary btn-sm" onClick={() => setEdit({ id: s.id, name: s.name, description: s.description ?? "", daily_rate: String(s.daily_rate), units: String(s.units ?? 1), photo_url: s.photo_url, is_active: s.is_active, sort_order: s.sort_order })}>
+            <button className="btn-secondary btn-sm" onClick={() => setEdit({ id: s.id, name: s.name, description: s.description ?? "", daily_rate: String(s.daily_rate), security_deposit: s.security_deposit == null ? "" : String(s.security_deposit), units: String(s.units ?? 1), photo_url: s.photo_url, is_active: s.is_active, sort_order: s.sort_order })}>
               Edit
             </button>
           </li>
@@ -616,6 +632,13 @@ function ScootersTab() {
                 Daily rate (₱)
               </label>
               <input id="scooter-rate" className="input" inputMode="decimal" value={edit.daily_rate} onChange={(e) => setEdit({ ...edit, daily_rate: e.target.value })} placeholder="500" />
+            </div>
+            <div>
+              <label className="label" htmlFor="scooter-security">
+                Security deposit (₱)
+              </label>
+              <input id="scooter-security" className="input" inputMode="decimal" value={edit.security_deposit} onChange={(e) => setEdit({ ...edit, security_deposit: e.target.value })} placeholder="Default from Settings" />
+              <p className="hint">Returnable deposit for this scooter. Empty = use the default from Rentals → Settings; 0 = none.</p>
             </div>
             <div>
               <label className="label" htmlFor="scooter-units">
@@ -695,7 +718,8 @@ function SettingsTab() {
         security_deposit_note: s.security_deposit_note?.trim() || null,
         pickup_note: s.pickup_note?.trim() || null,
         max_days: Math.min(90, Math.max(1, Number(s.max_days) || 30)),
-        grace_minutes: Math.min(240, Math.max(0, Number(s.grace_minutes) || 0)),
+        excess_hour_rate: Math.max(0, Number(s.excess_hour_rate) || 0),
+        max_excess_hours: Math.min(23, Math.max(0, Math.round(Number(s.max_excess_hours) || 0))),
         turnaround_minutes: Math.min(240, Math.max(0, Number(s.turnaround_minutes) || 0)),
         sms_enabled: !!s.sms_enabled,
         staff_alert_phones: s.staff_alert_phones?.trim() || null,
@@ -751,11 +775,18 @@ function SettingsTab() {
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
-          <label className="label" htmlFor="grace-minutes">
-            Late-return grace (minutes)
+          <label className="label" htmlFor="excess-rate">
+            Extra hour rate (₱/hour)
           </label>
-          <input id="grace-minutes" className="input" inputMode="numeric" {...num("grace_minutes")} />
-          <p className="hint">Rentals are charged per 24 hours; returning up to this late doesn&apos;t add a day. 0–240.</p>
+          <input id="excess-rate" className="input" inputMode="decimal" {...num("excess_hour_rate")} />
+          <p className="hint">Charged per 24 hours; each hour past the last full day costs this much.</p>
+        </div>
+        <div>
+          <label className="label" htmlFor="max-excess">
+            Most extra hours charged by the hour
+          </label>
+          <input id="max-excess" className="input" inputMode="numeric" {...num("max_excess_hours")} />
+          <p className="hint">More extra hours than this count as one more day. 0–23 (default 6).</p>
         </div>
         <div>
           <label className="label" htmlFor="turnaround-minutes">
@@ -768,10 +799,10 @@ function SettingsTab() {
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
           <label className="label" htmlFor="security-deposit">
-            Security deposit at pickup (₱)
+            Default security deposit (₱)
           </label>
           <input id="security-deposit" className="input" inputMode="decimal" {...num("security_deposit")} />
-          <p className="hint">Shown to customers; collected in cash at pickup and returned after. 0 = none.</p>
+          <p className="hint">For scooters without their own amount (set per scooter in the Scooters tab). Customers pay it at pickup or together with the deposit; returned after. 0 = none.</p>
         </div>
         <div>
           <label className="label" htmlFor="security-note">

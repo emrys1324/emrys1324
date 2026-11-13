@@ -48,6 +48,26 @@ select pg_temp.check((select payment_method = 'gcash' and payment_status = 'for_
                       and terms_agreed_at is not null and terms_snapshot like '1. Bring a valid%'
                       from rental_bookings where public_token = (select (r->>'token')::uuid from b1)), 'GCash receipt + reference saved, waiting for staff (no auto-expiry), agreed terms recorded');
 
+-- security deposit per scooter; pay it now (with the deposit) or at pickup
+reset role;
+update scooters set security_deposit = 1500 where id = 'a1000000-0000-0000-0000-000000000002';
+set role anon;
+create temp table sd on commit preserve rows as select
+  book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 320, 344, '{"security_upfront": true}')) up,
+  book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 368, 392)) later;
+select pg_temp.check((select (up->>'security_deposit')::numeric = 1500 and (up->>'security_upfront')::boolean and (up->>'pay_now')::numeric = (up->>'deposit')::numeric + 1500 from sd), 'scooter''s own ₱1,500 security deposit; ticked: paid now with the deposit (pay now = deposit + 1,500)');
+select pg_temp.check((select (later->>'security_deposit')::numeric = 1500 and not (later->>'security_upfront')::boolean and (later->>'pay_now')::numeric = (later->>'deposit')::numeric from sd), 'unticked: security deposit is paid at pickup (pay now = deposit only)');
+reset role;
+update scooters set security_deposit = null where id = 'a1000000-0000-0000-0000-000000000002';
+set role anon;
+select pg_temp.check((book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 650, 654))->>'security_deposit')::numeric = 2000, 'a scooter without its own security deposit uses the default from settings (₱2,000)');
+reset role;
+update rental_settings set security_deposit = 0;
+set role anon;
+select pg_temp.check((book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 674, 678, '{"security_upfront": true}'))->>'security_upfront')::boolean = false, 'with no security deposit at all, the tickbox has no effect');
+reset role;
+update rental_settings set security_deposit = 2000;
+
 -- pickup/return only within opening hours (default 8:00 AM – 10:00 PM)
 set role anon;
 select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 502, 512))$q$, 'Pickup and return are from 8:00 AM to 10:00 PM only');
@@ -83,8 +103,15 @@ select pg_temp.check((select status = 'cancelled' from rental_bookings where pub
 -- 24-hour blocks with grace; back-to-back with turnaround
 set role anon;
 select pg_temp.check((book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 100, 108))->>'days')::int = 1, '8 hours = 1 day');
-select pg_temp.check((book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 120, 144.5))->>'days')::int = 1, '24.5 hours = 1 day (grace)');
-select pg_temp.check((book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 200, 226))->>'days')::int = 2, '26 hours = 2 days');
+create temp table q on commit preserve rows as select
+  book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 120, 144.5)) a,
+  book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 200, 226)) b,
+  book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000002', 241, 271)) c,
+  book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000001', 263, 294)) e;
+select pg_temp.check((select (a->>'days')::int = 1 and (a->>'excess_hours')::int = 1 and (a->>'excess_fee')::numeric = 50 from q), '24.5 hours = 1 day + 1 extra hour (₱50; part of an hour counts as an hour)');
+select pg_temp.check((select (b->>'days')::int = 1 and (b->>'excess_hours')::int = 2 and (b->>'total')::numeric = (select daily_rate from scooters where id = 'a1000000-0000-0000-0000-000000000002') + 100 from q), '26 hours = 1 day + 2 extra hours × ₱50, included in the total');
+select pg_temp.check((select (c->>'days')::int = 1 and (c->>'excess_hours')::int = 6 and (c->>'excess_fee')::numeric = 300 from q), '30 hours = 1 day + 6 extra hours (the most charged by the hour)');
+select pg_temp.check((select (e->>'days')::int = 2 and (e->>'excess_hours')::int = 0 from q), '31 hours = 2 days (7 extra hours count as another day)');
 select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000001', 47, 50))$q$, 'UNAVAILABLE');
 select pg_temp.expect_error($q$select book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000001', 48, 52))$q$, 'UNAVAILABLE');
 select pg_temp.check((book_scooter(pg_temp.req('a1000000-0000-0000-0000-000000000001', 48.5, 56))->>'days')::int = 1, 'next pickup allowed 30 min after the return (turnaround)');

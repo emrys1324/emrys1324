@@ -20,6 +20,8 @@ interface Row {
   total: number;
   deposit_amount: number;
   security_deposit: number;
+  security_upfront?: boolean;
+  pay_now?: number;
   payment_status: string;
   payment_method?: string | null;
   gcash_reference?: string | null;
@@ -57,15 +59,15 @@ export function bookingMessage(kind: SmsKind, b: Row, c: Awaited<ReturnType<type
     case "confirmed":
       return `${c.brand}: Hi ${firstName(b.customer_name)}, booking ${b.booking_number} is confirmed! ${b.scooter_name}, ${when(b.pickup_at)} to ${when(b.return_at)}. Balance at pickup ${peso(balance)}.${link}`;
     case "reminder":
-      return `${c.brand}: Reminder - ${b.scooter_name} ${b.delivery ? "delivery" : "pickup"} at ${when(b.pickup_at)} (${b.booking_number}). ${place} Bring your license${balance > 0 ? `, ${peso(balance)} balance` : ""}${Number(b.security_deposit) > 0 ? ` and ${peso(b.security_deposit)} security deposit` : ""}.`;
+      return `${c.brand}: Reminder - ${b.scooter_name} ${b.delivery ? "delivery" : "pickup"} at ${when(b.pickup_at)} (${b.booking_number}). ${place} Bring your license${balance > 0 ? `, ${peso(balance)} balance` : ""}${Number(b.security_deposit) > 0 && !b.security_upfront ? ` and ${peso(b.security_deposit)} security deposit` : ""}.`;
     case "cancelled":
       return `${c.brand}: Booking ${b.booking_number} (${b.scooter_name}, ${when(b.pickup_at)}) has been cancelled.${b.cancel_reason ? ` Reason: ${b.cancel_reason}.` : ""}${["deposit_paid", "paid"].includes(b.payment_status) ? " Your deposit will be refunded." : ""}`;
     case "refunded":
       return b.payment_method === "gcash"
-        ? `${c.brand}: Your ${peso(b.deposit_amount)} deposit for ${b.booking_number} has been sent back to your GCash.`
-        : `${c.brand}: Your ${peso(b.deposit_amount)} deposit for ${b.booking_number} has been refunded. It may take a few days to reach your account.`;
+        ? `${c.brand}: Your ${peso(b.pay_now ?? b.deposit_amount)} payment for ${b.booking_number} has been sent back to your GCash.`
+        : `${c.brand}: Your ${peso(b.pay_now ?? b.deposit_amount)} payment for ${b.booking_number} has been refunded. It may take a few days to reach your account.`;
     case "staff_alert":
-      return `${c.brand}: New booking ${b.booking_number} - ${b.customer_name} ${b.customer_phone}, ${b.scooter_name}, ${when(b.pickup_at)} to ${when(b.return_at)}${b.delivery ? `, DELIVERY to ${b.delivery_address}` : ""}. ${b.payment_status === "for_verification" ? `GCash deposit ${peso(b.deposit_amount)}${b.gcash_reference ? ` ref ${b.gcash_reference}` : ""} - please check the receipt.` : `Deposit ${peso(b.deposit_amount)} paid.`}`;
+      return `${c.brand}: New booking ${b.booking_number} - ${b.customer_name} ${b.customer_phone}, ${b.scooter_name}, ${when(b.pickup_at)} to ${when(b.return_at)}${b.delivery ? `, DELIVERY to ${b.delivery_address}` : ""}. ${b.payment_status === "for_verification" ? `GCash ${peso(b.pay_now ?? b.deposit_amount)}${b.gcash_reference ? ` ref ${b.gcash_reference}` : ""} - please check the receipt.` : `Paid ${peso(b.pay_now ?? b.deposit_amount)}${b.security_upfront ? " incl. security deposit" : ""}.`}`;
   }
 }
 
