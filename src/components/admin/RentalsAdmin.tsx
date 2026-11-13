@@ -300,7 +300,7 @@ function BookingSheet({ booking: b, onClose, onChanged }: { booking: Booking | n
               </div>
               {Number(b.security_deposit) > 0 && (
                 <div className="flex justify-between text-coffee-700">
-                  <dt>Security deposit {b.security_upfront ? "(paid with the deposit — return it after the rental)" : "(returnable)"}</dt>
+                  <dt>Security deposit {b.security_upfront ? "(paid with the deposit — refund it after the rental)" : "(refundable)"}</dt>
                   <dd>{formatPeso(b.security_deposit)}</dd>
                 </div>
               )}
@@ -638,7 +638,7 @@ function ScootersTab() {
                 Security deposit (₱)
               </label>
               <input id="scooter-security" className="input" inputMode="decimal" value={edit.security_deposit} onChange={(e) => setEdit({ ...edit, security_deposit: e.target.value })} placeholder="Default from Settings" />
-              <p className="hint">Returnable deposit for this scooter. Empty = use the default from Rentals → Settings; 0 = none.</p>
+              <p className="hint">Refundable deposit for this scooter. Empty = use the default from Rentals → Settings; 0 = none.</p>
             </div>
             <div>
               <label className="label" htmlFor="scooter-units">
