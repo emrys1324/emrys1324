@@ -292,7 +292,7 @@ export function ScooterBooking({ rs, brandName }: { rs: RentalSettings; brandNam
                       </span>
                     )}
                   </span>
-                  {securityFor(s, rs) > 0 && <span className="block text-xs text-coffee-600">{formatPeso(securityFor(s, rs))} security deposit (returnable)</span>}
+                  {securityFor(s, rs) > 0 && <span className="block text-xs text-coffee-600">{formatPeso(securityFor(s, rs))} security deposit (refundable)</span>}
                 </span>
                 {booked && <Badge tone="gray">Booked</Badge>}
                 {!booked && validDates && Number(s.units) > 1 && freeUnits[s.id] !== undefined && (
@@ -400,7 +400,7 @@ export function ScooterBooking({ rs, brandName }: { rs: RentalSettings; brandNam
             {upfront && (
               <div className="flex justify-between gap-3 font-semibold text-sage-700">
                 <dt>
-                  Security deposit <span className="font-normal">(returnable)</span>
+                  Security deposit <span className="font-normal">(refundable)</span>
                 </dt>
                 <dd className="tabular-nums">{formatPeso(security)}</dd>
               </div>
@@ -416,7 +416,7 @@ export function ScooterBooking({ rs, brandName }: { rs: RentalSettings; brandNam
             {security > 0 && !upfront && (
               <div className="flex justify-between gap-3" data-testid="security-deposit">
                 <dt>
-                  Security deposit at pickup <span className="text-coffee-600">(returnable)</span>
+                  Security deposit at pickup <span className="text-coffee-600">(refundable)</span>
                 </dt>
                 <dd className="tabular-nums">{formatPeso(security)}</dd>
               </div>
@@ -437,7 +437,7 @@ export function ScooterBooking({ rs, brandName }: { rs: RentalSettings; brandNam
           )}
           {security > 0 && (
             <p className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">
-              The {formatPeso(security)} security deposit{rs.security_deposit_note ? ` (${rs.security_deposit_note})` : ""} is returned when the scooter comes back in good condition.
+              The {formatPeso(security)} security deposit{rs.security_deposit_note ? ` (${rs.security_deposit_note})` : ""} is refunded when the scooter comes back in good condition.
             </p>
           )}
           <p className="hint">Pickup only{rs.pickup_note ? `: ${rs.pickup_note}` : ""}. Pay the balance when you pick up the scooter.</p>

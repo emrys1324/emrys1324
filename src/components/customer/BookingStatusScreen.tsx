@@ -221,7 +221,7 @@ export function BookingStatusScreen({ token }: { token: string }) {
             {Number(b.security_deposit) > 0 && !b.security_upfront && b.status !== "cancelled" && b.status !== "returned" && (
               <div className="flex justify-between">
                 <dt>
-                  Security deposit at pickup <span className="text-coffee-600">(returnable)</span>
+                  Security deposit at pickup <span className="text-coffee-600">(refundable)</span>
                 </dt>
                 <dd>{formatPeso(b.security_deposit)}</dd>
               </div>
@@ -235,7 +235,7 @@ export function BookingStatusScreen({ token }: { token: string }) {
           </dl>
           {Number(b.security_deposit) > 0 && b.status !== "cancelled" && b.status !== "returned" && (
             <p className="rounded-xl bg-amber-50 px-3 py-2 text-amber-900">
-              The {formatPeso(b.security_deposit)} security deposit{rs?.security_deposit_note ? ` (${rs.security_deposit_note})` : ""} is returned when the scooter comes back in good condition.
+              The {formatPeso(b.security_deposit)} security deposit{rs?.security_deposit_note ? ` (${rs.security_deposit_note})` : ""} is refunded when the scooter comes back in good condition.
             </p>
           )}
           {b.status !== "cancelled" && b.status !== "returned" && <p className="text-coffee-700">Bring your driver&apos;s license when you pick up the scooter.</p>}
