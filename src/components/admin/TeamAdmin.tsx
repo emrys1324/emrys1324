@@ -148,7 +148,7 @@ export function TeamSection() {
       const name = form.name.trim();
       setLink(j.link ? { id: "new", link: j.link, note: `Send this link to ${name} (Messenger, SMS…). They'll set their own password.` } : null);
       setForm({ ...EMPTY, kind: form.kind, permissions: form.permissions, send_email: form.send_email });
-      return j.emailed ? `Invite sent to ${form.email.trim()}. ${name} sets a password from the email, then signs in at /login.` : `${name} is added. Share the link below with them.`;
+      return j.emailed ? `Invite sent to ${form.email.trim()}. ${name} sets a password from the email, then signs in at ${form.kind === "rider" ? "/rider/login" : "/login"}.` : `${name} is added. Share the link below with them.`;
     });
   };
 
@@ -159,7 +159,7 @@ export function TeamSection() {
         <h2 id="team-title" className="section-title">
           Team
         </h2>
-        <p className="text-sm text-coffee-700">Staff, admins and riders. Invite people by email — they set their own password, then sign in at <span className="font-mono">/login</span>.</p>
+        <p className="text-sm text-coffee-700">Staff, admins and riders. Invite people by email — they set their own password, then sign in at <span className="font-mono">/login</span> (riders: <span className="font-mono">/rider/login</span>).</p>
       </div>
       {msg && <Alert tone={msg.tone}>{msg.text}</Alert>}
       {link?.id === "new" && <LinkBox link={link.link} note={link.note} />}

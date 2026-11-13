@@ -93,7 +93,7 @@ export function RiderScreen() {
           <Logo small />
           <button
             className="btn-ghost btn-sm"
-            onClick={() => signOutAndGo("/login")}
+            onClick={() => signOutAndGo("/rider/login")}
           >
             Sign out
           </button>

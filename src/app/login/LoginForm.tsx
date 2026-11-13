@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { Logo } from "@/components/customer/Header";
@@ -45,7 +46,7 @@ export function LoginForm() {
       </div>
       <form onSubmit={submit} className="card space-y-4 p-6">
         <div>
-          <h1 className="font-display text-2xl font-bold">Staff &amp; rider sign in</h1>
+          <h1 className="font-display text-2xl font-bold">Staff sign in</h1>
           <p className="text-sm text-coffee-700">Customers don&apos;t need an account to order.</p>
         </div>
         {error && <Alert>{error}</Alert>}
@@ -65,6 +66,12 @@ export function LoginForm() {
           {busy ? <Spinner /> : "Sign in"}
         </button>
       </form>
+      <p className="mt-4 text-center text-sm text-coffee-600">
+        Delivery rider?{" "}
+        <Link href="/rider/login" className="font-semibold underline">
+          Rider sign in
+        </Link>
+      </p>
     </main>
   );
 }

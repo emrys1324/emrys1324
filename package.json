@@ -26,7 +26,8 @@
     "test:team": "node tests/team.test.js",
     "test:rentals": "node tests/rentals.test.js",
     "test:account": "node tests/account.test.js",
-    "test:pwa": "node tests/pwa.test.js"
+    "test:pwa": "node tests/pwa.test.js",
+    "test:rider-login": "node tests/rider-login.test.js"
   },
   "dependencies": {
     "@capacitor/android": "8.6.0",

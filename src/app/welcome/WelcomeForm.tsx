@@ -108,7 +108,7 @@ export function WelcomeForm() {
                 </>
               ) : (
                 <>
-                  Set a password for <strong>{email}</strong>. You&apos;ll use it to sign in at <span className="font-mono">/login</span>.
+                  Set a password for <strong>{email}</strong>. You&apos;ll use it to sign in at <span className="font-mono">{profile?.role === "rider" ? "/rider/login" : "/login"}</span>.
                 </>
               )}
             </p>
